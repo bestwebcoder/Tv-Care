@@ -67,6 +67,18 @@ development scaffolding, deliberately outside `supabase/migrations` — migratio
 run everywhere, and inventing people in one would put fictional clients into a
 real clinical system. It refuses to run against any non-local database.
 
+The integration suite creates around a hundred real accounts per run and cannot
+clean them up afterwards: every role grant writes an `audit_logs` row, and that
+table refuses DELETE from everyone, service role included
+(`20260820000200_rls_and_audit.sql`). That is the guarantee working, not a gap
+to code around — so fixtures accumulate in the local database until the whole
+thing is dropped. `npm run test:fresh` is the tidy way to run them: reset, seed,
+then test. Plain `npm test` is fine day to day; reset when the roster gets noisy.
+
+`npm run ensure:super-admin` provisions or updates one Super Admin account,
+reading `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` from the environment so
+no real credential is ever written into the repository.
+
 ---
 
 ## 3. Roles

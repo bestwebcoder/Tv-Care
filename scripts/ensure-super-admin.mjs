@@ -78,8 +78,14 @@ async function main() {
     if (error) throw error;
     userId = data.user.id;
 
-    const { error: insertError } = await db.from("users").insert({ id: userId, full_name: fullName, email });
-    if (insertError) throw insertError;
+    // The profile row already exists: handle_new_user (20260820000300) writes
+    // one for every auth account, whatever created it, so that an account can
+    // never exist without a profile. Upsert rather than insert — inserting
+    // races that trigger and loses, which is exactly what it did.
+    const { error: profileError } = await db
+      .from("users")
+      .upsert({ id: userId, full_name: fullName, email }, { onConflict: "id" });
+    if (profileError) throw profileError;
 
     console.log(`Created account: ${email}`);
   }

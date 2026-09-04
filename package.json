@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:fresh": "npm run db:reset && npm run seed:demo && npm run test",
     "typecheck": "tsc --noEmit",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
