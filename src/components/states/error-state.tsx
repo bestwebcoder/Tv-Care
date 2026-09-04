@@ -9,6 +9,16 @@ type ErrorStateProps = {
   description?: string;
   action?: ReactNode;
   className?: string;
+  /**
+   * Overrides the title/description colour. Both default to the theme-aware
+   * app tokens, correct wherever this renders on the app's own background —
+   * every caller but two. /services and /training-education sit on the fixed
+   * marketing palette instead (see globals.css), where a theme-aware colour
+   * reads fine in light mode and disappears in dark mode against a background
+   * that never darkens; they pass the fixed marketing tokens here instead.
+   */
+  titleClassName?: string;
+  descriptionClassName?: string;
 };
 
 /**
@@ -20,6 +30,8 @@ export function ErrorState({
   description = "We could not load this just now. Please try again in a moment.",
   action,
   className,
+  titleClassName,
+  descriptionClassName,
 }: ErrorStateProps) {
   return (
     <div
@@ -33,8 +45,8 @@ export function ErrorState({
         <TriangleAlert className="size-5" aria-hidden />
       </span>
       <div className="grid gap-1">
-        <h3 className="text-base font-medium">{title}</h3>
-        <p className="text-muted-foreground mx-auto max-w-sm text-sm">{description}</p>
+        <h3 className={cn("text-base font-medium", titleClassName)}>{title}</h3>
+        <p className={cn("text-muted-foreground mx-auto max-w-sm text-sm", descriptionClassName)}>{description}</p>
       </div>
       {action ? <div className="mt-2 w-full max-w-xs">{action}</div> : null}
     </div>

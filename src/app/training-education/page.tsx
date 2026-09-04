@@ -79,7 +79,11 @@ export default async function TrainingEducationPage() {
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-14">
           {servicesResult.status === "error" ? (
             <div className="py-20">
-              <ErrorState title="Programmes could not be loaded" />
+              <ErrorState
+                title="Programmes could not be loaded"
+                titleClassName="text-marketing-ink"
+                descriptionClassName="text-marketing-quiet"
+              />
             </div>
           ) : categories.length === 0 ? (
             <div className="py-20">
@@ -87,6 +91,8 @@ export default async function TrainingEducationPage() {
                 icon={GraduationCap}
                 title="No programmes listed yet"
                 description="Check back soon — our training and education programmes will appear here once they're set up."
+                titleClassName="text-marketing-ink"
+                descriptionClassName="text-marketing-quiet"
               />
             </div>
           ) : (
@@ -115,7 +121,7 @@ export default async function TrainingEducationPage() {
         />
       </main>
 
-      <PublicFooter organization={organization} />
+      <PublicFooter organization={organization} tone="marketing" />
     </div>
   );
 }

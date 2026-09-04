@@ -110,7 +110,7 @@ function ServiceBlock({
             {service.inclusions.map((item, index) => (
               <li
                 key={`${item}-${index}`}
-                className="border-b-marketing-rule/50 relative border-b py-1.5 pl-5 text-sm leading-relaxed last:border-b-0"
+                className="border-b-marketing-rule/50 text-marketing-ink relative border-b py-1.5 pl-5 text-sm leading-relaxed last:border-b-0"
               >
                 <span
                   aria-hidden

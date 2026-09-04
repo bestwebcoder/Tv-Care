@@ -34,6 +34,7 @@
   --color-marketing-forest: var(--marketing-forest);
   --color-marketing-grove: var(--marketing-grove);
   --color-marketing-parchment: var(--marketing-parchment);
+  --color-marketing-ink: var(--marketing-ink);
   --color-marketing-gold: var(--marketing-gold);
   --color-marketing-gold-light: var(--marketing-gold-light);
   --color-marketing-rule: var(--marketing-rule);
@@ -120,6 +121,14 @@
   --marketing-forest: oklch(0.28 0.038 158);
   --marketing-grove: oklch(0.38 0.052 154);
   --marketing-parchment: oklch(0.975 0.008 92);
+  /*
+   * Plain body copy on the parchment/white marketing surfaces — pinned to
+   * light mode's --foreground rather than the theme-aware token, for the same
+   * reason as the rest of this palette. Without it, ordinary text left
+   * unstyled (inheriting --foreground the way body text normally does)
+   * quietly turns near-white in dark mode, on a background that never does.
+   */
+  --marketing-ink: oklch(0.26 0.009 95);
   --marketing-gold: oklch(0.68 0.098 82);
   --marketing-gold-light: oklch(0.78 0.082 84);
   --marketing-rule: oklch(0.86 0.012 92);

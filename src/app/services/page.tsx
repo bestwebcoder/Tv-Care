@@ -79,7 +79,11 @@ export default async function ServicesPage() {
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-14">
           {servicesResult.status === "error" ? (
             <div className="py-20">
-              <ErrorState title="Services could not be loaded" />
+              <ErrorState
+                title="Services could not be loaded"
+                titleClassName="text-marketing-ink"
+                descriptionClassName="text-marketing-quiet"
+              />
             </div>
           ) : categories.length === 0 ? (
             <div className="py-20">
@@ -87,6 +91,8 @@ export default async function ServicesPage() {
                 icon={ClipboardList}
                 title="No services listed yet"
                 description="Check back soon — our services will appear here once they're set up."
+                titleClassName="text-marketing-ink"
+                descriptionClassName="text-marketing-quiet"
               />
             </div>
           ) : (
@@ -113,7 +119,7 @@ export default async function ServicesPage() {
         />
       </main>
 
-      <PublicFooter organization={organization} />
+      <PublicFooter organization={organization} tone="marketing" />
     </div>
   );
 }
