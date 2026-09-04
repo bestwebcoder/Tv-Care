@@ -22,7 +22,11 @@ import { addTeamMemberSchema, setTeamRoleSchema, NO_ROLE } from "@/lib/validatio
  * The lookup is the check: it accepts a system role or one belonging to this
  * practice, so an id from anywhere else — another practice's role, a deleted
  * one, something invented — resolves to nothing and the grant is refused.
- * super_admin is excluded here as it is everywhere: architecture only.
+ *
+ * is_assignable_in_ui is the same column /admin/users builds its role select
+ * from, which is the point of asking it here rather than naming a slug: a
+ * role this refuses must not be one the screen offered. super_admin is still
+ * excluded — it sets that column false — but now by its own row saying so.
  */
 async function grantTeamRole(
   supabase: SupabaseClient,
@@ -35,7 +39,7 @@ async function grantTeamRole(
     .select("id, slug, is_system")
     .eq("id", roleId)
     .is("deleted_at", null)
-    .neq("slug", "super_admin")
+    .eq("is_assignable_in_ui", true)
     .or(`organization_id.eq.${organizationId},is_system.eq.true`)
     .maybeSingle();
 

@@ -26,21 +26,18 @@ import { idleState } from "@/lib/forms";
  * Creating a role, and editing one — the same form, because the two must agree
  * about what a role is.
  *
- * A system role opens here too, and is now fully editable: name, description
- * and the permission matrix all save. The one thing that never changes, for
- * any role, is its identity — slug, is_system and organization_id are fixed
- * by a database trigger (20261007000100), not by this form.
+ * Every role opens here on the same terms: name, description and the
+ * permission matrix all save. The one thing that never changes, for any role,
+ * is its identity — slug, is_system and organization_id are fixed by a
+ * database trigger (20261007000100), not by this form.
  *
- * Built-in roles are shared by every practice on the platform — there is one
- * Doctor row, not one per practice — so a change made here takes effect for
- * every practice's doctors, not only this one. The matrix also still will not
- * describe a narrower built-in role completely: some of what a receptionist
- * or a lab user does is written into their own policies rather than a module
- * here, so a short list on one of them is not the same as an empty job.
+ * The matrix will not describe a narrower role completely: some of what a
+ * receptionist or a lab user does is written into their own policies rather
+ * than a module here, so a short list on one of them is not the same as an
+ * empty job.
  */
 export function RoleEditorDialog({ role }: { role?: RoleSummary }) {
   const [open, setOpen] = useState(false);
-  const isSystem = role?.isSystem ?? false;
   const [state, formAction] = useActionState(role ? updateRoleAction : createRoleAction, idleState);
 
   const [handledState, setHandledState] = useState(state);
@@ -69,9 +66,7 @@ export function RoleEditorDialog({ role }: { role?: RoleSummary }) {
         <DialogHeader>
           <DialogTitle>{role ? role.name : "New role"}</DialogTitle>
           <DialogDescription>
-            {isSystem
-              ? "A built-in role, shared by every practice on the platform. A change here takes effect for all of them, not only yours. Managing something always includes viewing it."
-              : "Give the role a name, then tick what it may do. Managing something always includes viewing it."}
+            Give the role a name, then tick what it may do. Managing something always includes viewing it.
           </DialogDescription>
         </DialogHeader>
 

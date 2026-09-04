@@ -1,12 +1,11 @@
 "use client";
 
-import { ShieldCheck, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useActionState, useState } from "react";
 
 import { FormAlert } from "@/components/form/form-alert";
 import { SubmitButton } from "@/components/form/submit-button";
 import { RoleEditorDialog } from "@/components/roles/role-editor-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -45,9 +44,8 @@ function DeleteRoleDialog({ role }: { role: RoleSummary }) {
         <DialogHeader>
           <DialogTitle>Delete {role.name}?</DialogTitle>
           <DialogDescription>
-            {role.isSystem
-              ? "A built-in role, shared by every practice on the platform. This only works while nobody anywhere still holds it — the People count above is just your own practice's, so a role with none of your own people may still be refused if another practice's are still on it."
-              : "The role stops being offered when assigning someone. Anyone who has held it keeps their history — a revoked grant still says which role it was."}
+            The role stops being offered when assigning someone, and only while nobody still holds it. Anyone who has
+            held it keeps their history — a revoked grant still says which role it was.
           </DialogDescription>
         </DialogHeader>
 
@@ -70,22 +68,20 @@ function DeleteRoleDialog({ role }: { role: RoleSummary }) {
 }
 
 /**
- * The practice's roles, built-in and its own, with what each may do.
+ * The practice's roles, with what each may do.
  *
- * Both kinds sit in one table on purpose: they are the same kind of object to
- * whoever is assigning somebody a job, and a separate "custom roles" section
- * would suggest the practice's own roles are second-class when they are
- * enforced by the same policies.
+ * Every role sits in one table on purpose, and none of them is labelled as
+ * coming from the system: they are the same kind of object to whoever is
+ * assigning somebody a job, and marking some of them out only suggests the
+ * practice's own roles are second-class when they are enforced by the same
+ * policies.
  */
 export function RolesPanel({ roles }: { roles: RoleSummary[] }) {
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-muted-foreground text-sm">
-          What each role may do. A change to a built-in role takes effect for every practice on the platform, not
-          only yours — there is one Doctor, one Receptionist, shared by all of them. Roles this practice defines
-          reach only your own practice, and either way, a change takes effect the next time that person loads a
-          page.
+          What each role may do. A change takes effect the next time someone holding that role loads a page.
         </p>
         <RoleEditorDialog />
       </div>
@@ -103,25 +99,15 @@ export function RolesPanel({ roles }: { roles: RoleSummary[] }) {
           {roles.map((role) => (
             <TableRow key={role.id}>
               <TableCell>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{role.name}</span>
-                  {role.isSystem ? (
-                    <Badge variant="secondary">
-                      <ShieldCheck aria-hidden className="size-3" />
-                      Built in
-                    </Badge>
-                  ) : null}
-                </div>
-                {role.description ? (
-                  <p className="text-muted-foreground text-sm">{role.description}</p>
-                ) : null}
+                <span className="font-medium">{role.name}</span>
+                {role.description ? <p className="text-muted-foreground text-sm">{role.description}</p> : null}
               </TableCell>
               <TableCell className="text-right">
-                {/* Every built-in role carries its own rows now
-                    (20261006000100), so this is a real count for all of them.
-                    A short list on a built-in role is not an omission: a lab
-                    user may update a test result, and no key in the catalogue
-                    says so without also unlocking the notes around it. */}
+                {/* Every role carries its own permission rows (20261006000100),
+                    so this is a real count for all of them. A short list is not
+                    an omission: a lab user may update a test result, and no key
+                    in the catalogue says so without also unlocking the notes
+                    around it. */}
                 <span data-numeric>{role.permissions.length}</span>
               </TableCell>
               <TableCell className="text-right" data-numeric>

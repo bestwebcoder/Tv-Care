@@ -18,6 +18,16 @@ export type RoleSummary = {
   description: string | null;
   /** A built-in role: describable, assignable, never editable. */
   isSystem: boolean;
+  /**
+   * Whether this role may be handed to somebody through the UI.
+   *
+   * The database's own answer (roles.is_assignable_in_ui), not a slug this
+   * file recognises: super_admin is architecture-only and says so by setting
+   * it false, and a role a practice invents says true by default. Every
+   * screen that offers a role, and grantTeamRole which accepts one, ask this
+   * same column, so what is offered and what can be saved cannot drift apart.
+   */
+  isAssignableInUi: boolean;
   permissions: string[];
   /** How many people in this practice currently hold it. */
   holderCount: number;
@@ -29,23 +39,18 @@ type RoleRow = {
   name: string;
   description: string | null;
   is_system: boolean;
+  is_assignable_in_ui: boolean;
   role_permissions: { permission_key: string }[] | null;
 };
 
-/**
- * Every role this practice can assign: the built-ins, plus its own.
- *
- * `client` is left out. It is not a job at the practice — it is what a pet
- * owner is — and offering it beside Receptionist on a staff screen invites
- * granting somebody the wrong one.
- */
+/** Every role this practice knows about: the built-ins, plus its own. */
 export async function listRoles(organizationId: string): Promise<Result<RoleSummary[]>> {
   const supabase = await createClient();
 
   const [{ data: roles, error }, { data: grants, error: grantError }] = await Promise.all([
     supabase
       .from("roles")
-      .select("id, slug, name, description, is_system, role_permissions(permission_key)")
+      .select("id, slug, name, description, is_system, is_assignable_in_ui, role_permissions(permission_key)")
       .is("deleted_at", null)
       .or(`organization_id.eq.${organizationId},is_system.eq.true`)
       .order("is_system", { ascending: false })
@@ -69,17 +74,16 @@ export async function listRoles(organizationId: string): Promise<Result<RoleSumm
 
   return {
     status: "ok",
-    data: (roles as RoleRow[])
-      .filter((role) => role.slug !== "client")
-      .map((role) => ({
-        id: role.id,
-        slug: role.slug,
-        name: role.name,
-        description: role.description,
-        isSystem: role.is_system,
-        permissions: (role.role_permissions ?? []).map((entry) => entry.permission_key),
-        holderCount: holders.get(role.id) ?? 0,
-      })),
+    data: (roles as RoleRow[]).map((role) => ({
+      id: role.id,
+      slug: role.slug,
+      name: role.name,
+      description: role.description,
+      isSystem: role.is_system,
+      isAssignableInUi: role.is_assignable_in_ui,
+      permissions: (role.role_permissions ?? []).map((entry) => entry.permission_key),
+      holderCount: holders.get(role.id) ?? 0,
+    })),
   };
 }
 
@@ -111,6 +115,7 @@ export async function getRole(roleId: string): Promise<Result<RoleSummary | null
       name: role.name,
       description: role.description,
       isSystem: role.is_system,
+      isAssignableInUi: role.is_assignable_in_ui,
       permissions: (role.role_permissions ?? []).map((entry) => entry.permission_key),
       holderCount: 0,
     },

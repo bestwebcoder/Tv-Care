@@ -85,6 +85,18 @@ function DeactivateTeamMemberDialog({ member }: { member: TeamMember }) {
 function TeamMemberRow({ member, roles }: { member: TeamMember; roles: RoleOption[] }) {
   const [state, formAction] = useActionState(setTeamRoleAction, idleState);
 
+  /**
+   * Whether this person's role is one this screen can change.
+   *
+   * A role that is not assignable through the UI (super_admin sets
+   * roles.is_assignable_in_ui false) is deliberately absent from `roles`, so
+   * putting it in a select would render an empty box that misreports what they
+   * hold — and saving it would revoke the role before the server refused to
+   * grant it back, leaving them with none. Their role is shown as text
+   * instead: true, and not something this page claims it can edit.
+   */
+  const isEditable = member.roleId === null || roles.some((option) => option.value === member.roleId);
+
   return (
     <TableRow>
       <TableCell>
@@ -95,30 +107,39 @@ function TeamMemberRow({ member, roles }: { member: TeamMember; roles: RoleOptio
         </p>
       </TableCell>
       <TableCell className="whitespace-normal">
-        <form action={formAction} className="flex flex-wrap items-end gap-2">
-          <input type="hidden" name="userId" value={member.userId} />
-          <div className="w-36 [&_label]:sr-only">
-            {/* Keyed on the value itself: an uncontrolled Select does not
-                re-sync its defaultValue on its own, so after a save changes
-                member.role and the page revalidates, the dropdown would
-                otherwise keep showing whatever was last selected instead of
-                what actually saved — reading as "the role didn't save" even
-                though it did. */}
-            <SelectField
-              key={member.roleId ?? NO_ROLE}
-              label="Role"
-              name="role"
-              options={roleOptions("No role", roles)}
-              defaultValue={member.roleId ?? NO_ROLE}
-            />
+        {isEditable ? (
+          <>
+            <form action={formAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="userId" value={member.userId} />
+              <div className="w-36 [&_label]:sr-only">
+                {/* Keyed on the value itself: an uncontrolled Select does not
+                    re-sync its defaultValue on its own, so after a save changes
+                    member.role and the page revalidates, the dropdown would
+                    otherwise keep showing whatever was last selected instead of
+                    what actually saved — reading as "the role didn't save" even
+                    though it did. */}
+                <SelectField
+                  key={member.roleId ?? NO_ROLE}
+                  label="Role"
+                  name="role"
+                  options={roleOptions("No role", roles)}
+                  defaultValue={member.roleId ?? NO_ROLE}
+                />
+              </div>
+              <SaveButton />
+            </form>
+            {state.status !== "idle" ? (
+              <div className="mt-2">
+                <FormAlert state={state} />
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="grid gap-0.5">
+            <p className="font-medium">{member.roleName}</p>
+            <p className="text-muted-foreground text-sm">Not assignable from here</p>
           </div>
-          <SaveButton />
-        </form>
-        {state.status !== "idle" ? (
-          <div className="mt-2">
-            <FormAlert state={state} />
-          </div>
-        ) : null}
+        )}
       </TableCell>
       <TableCell className="whitespace-normal">
         {/* Laid out in a row, matching the doctor cards at /admin/doctors.

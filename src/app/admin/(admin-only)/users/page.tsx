@@ -76,9 +76,17 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
   ]);
 
   // The select on each roster row and the Add user dialog offer the same list:
-  // every role this practice can assign, its own included.
+  // every role this practice can actually hand to somebody, its own included.
+  //
+  // Which those are is the database's answer (roles.is_assignable_in_ui), the
+  // same column grantTeamRole checks before it accepts one. Asking a different
+  // question here is what used to leave Super Admin in the list for a server
+  // that refuses it, and the built-in Client out of a list 27 people's rows
+  // needed in order to render their own role.
   const roleOptions =
-    roles.status === "ok" ? roles.data.map((role) => ({ value: role.id, label: role.name })) : [];
+    roles.status === "ok"
+      ? roles.data.filter((role) => role.isAssignableInUi).map((role) => ({ value: role.id, label: role.name }))
+      : [];
 
   return (
     <div className="grid gap-6">
