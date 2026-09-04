@@ -5,7 +5,7 @@ import { Users } from "lucide-react";
 import { RolesPanel } from "@/components/roles/roles-panel";
 import { AddTeamMemberDialog } from "@/components/team/add-team-member-dialog";
 import { RemovedTeamMembers } from "@/components/team/removed-team-members";
-import { RosterTabs, ROSTER_TAB_LABELS } from "@/components/team/roster-tabs";
+import { RosterTabs, tabLabel } from "@/components/team/roster-tabs";
 import { TeamRosterTable } from "@/components/team/team-roster-table";
 import { Pagination } from "@/components/search/pagination";
 import { EmptyState } from "@/components/states/empty-state";
@@ -13,7 +13,13 @@ import { ErrorState } from "@/components/states/error-state";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireRole } from "@/features/auth/session";
 import { listRoles } from "@/features/roles/queries";
-import { getRemovedTeamMembers, getRosterCounts, getTeamRoster, isRosterTab } from "@/features/team/queries";
+import {
+  getRemovedTeamMembers,
+  getRosterCounts,
+  getTeamRoster,
+  isRosterTab,
+  listRosterRoles,
+} from "@/features/team/queries";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Users & roles · TV Care" };
@@ -44,7 +50,6 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
 
   const { page: pageParam, role: roleParam, section: sectionParam } = await searchParams;
   const page = typeof pageParam === "string" ? Number(pageParam) || 1 : 1;
-  const tab = typeof roleParam === "string" && isRosterTab(roleParam) ? roleParam : "all";
   const section: Section = sectionParam === "roles" ? "roles" : "users";
 
   if (!organizationId) {
@@ -56,11 +61,18 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
     );
   }
 
-  const [roster, counts, removed, roles] = await Promise.all([
-    getTeamRoster(organizationId, { page, tab }),
-    getRosterCounts(organizationId),
+  const [rosterRolesResult, removed, roles] = await Promise.all([
+    listRosterRoles(organizationId),
     getRemovedTeamMembers(organizationId),
     listRoles(organizationId),
+  ]);
+
+  const rosterRoles = rosterRolesResult.status === "ok" ? rosterRolesResult.data : [];
+  const tab = typeof roleParam === "string" && isRosterTab(roleParam, rosterRoles) ? roleParam : "all";
+
+  const [roster, counts] = await Promise.all([
+    getTeamRoster(organizationId, { page, tab }),
+    getRosterCounts(organizationId, rosterRoles),
   ]);
 
   // The select on each roster row and the Add user dialog offer the same list:
@@ -114,14 +126,14 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
         <>
           <Card>
             <CardContent className="grid gap-4">
-              <RosterTabs active={tab} counts={counts.status === "ok" ? counts.data : null} />
+              <RosterTabs active={tab} counts={counts.status === "ok" ? counts.data : null} roles={rosterRoles} />
 
               {roster.status === "error" ? (
                 <ErrorState title="Users could not be loaded" />
               ) : roster.data.length === 0 ? (
                 <EmptyState
                   icon={Users}
-                  title={tab === "all" ? "No users yet" : `No ${ROSTER_TAB_LABELS[tab].toLowerCase()} yet`}
+                  title={tab === "all" ? "No users yet" : `No ${tabLabel(tab, rosterRoles).toLowerCase()} yet`}
                   description={
                     tab === "none"
                       ? "Everyone registered in this practice has a role."
