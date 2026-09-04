@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
  * gap the demo seed's "no role granted" account exists to illustrate. Once
  * setTeamRoleAction moves someone onto doctor or client, they carry on being
  * managed from that role's own page and drop out of this list. Every other
- * clinic-side role stays here — see MANAGED_TEAM_ROLES.
+ * clinic-side role stays here — see listRosterRoles.
  */
 
 export type Result<T> = { status: "ok"; data: T } | { status: "error" };
@@ -19,57 +19,65 @@ export type PaginatedResult<T> =
   | { status: "ok"; data: T[]; totalCount: number; page: number; pageSize: number }
   | { status: "error" };
 
-/**
- * The roles this page manages. Doctors and clients are deliberately absent —
- * they have their own pages — but every other clinic-side role must appear
- * here, or granting someone one makes them vanish from the only screen that
- * could change it back.
- */
-export const MANAGED_TEAM_ROLES = ["admin", "finance_manager", "lab", "receptionist"] as const;
+/** One role's tab on the roster. */
+export type RosterRoleTab = { id: string; slug: string; name: string; isSystem: boolean };
 
 /**
- * Every role a person can hold, plus "none" for someone registered as staff
- * who has not been granted one yet. Each is a tab on /admin/users.
+ * A tab on the roster: "all", "none" (staff waiting for a role), or one
+ * role's id. Not a closed union — which roles exist is data now, not a fixed
+ * list this file can enumerate, so validating one requires the roles
+ * themselves (see isRosterTab, listRosterRoles).
+ */
+export type RosterTab = "all" | "none" | (string & {});
+
+/**
+ * Every role that gets its own tab on the roster: the built-ins meant to be
+ * assignable through the UI (roles.is_assignable_in_ui — super_admin opts
+ * itself out, same as everywhere else it is architecture-only), plus
+ * whatever roles this practice has defined for itself. Read from the
+ * database rather than listed here, so a role a practice creates — or one
+ * this application adds later — shows up without a code change.
  *
  * Doctors and clients keep their own pages for the full lifecycle (creating a
  * pet owner, editing a doctor's profile); they appear here so an admin can see
  * and change *who holds what*, which is the one thing those pages do not do.
  */
-export const ROSTER_ROLES = [
-  "admin",
-  "doctor",
-  "client",
-  "finance_manager",
-  "lab",
-  "receptionist",
-] as const;
+export async function listRosterRoles(organizationId: string): Promise<Result<RosterRoleTab[]>> {
+  const supabase = await createClient();
 
-export type RosterRole = (typeof ROSTER_ROLES)[number];
-export type TeamRole = RosterRole | "none";
+  const { data, error } = await supabase
+    .from("roles")
+    .select("id, slug, name, is_system")
+    .eq("is_assignable_in_ui", true)
+    .is("deleted_at", null)
+    .or(`organization_id.eq.${organizationId},is_system.eq.true`)
+    .order("is_system", { ascending: false })
+    .order("name");
 
-/**
- * A tab on the roster: every built-in role, everyone, the not-yet-granted, and
- * one for the holders of roles this practice defined itself. Those get a
- * single tab rather than one each — a practice with a dozen custom roles would
- * otherwise have a tab strip nobody can read on a phone.
- */
-export type RosterTab = TeamRole | "custom" | "all";
+  if (error) {
+    console.error("[team] roster roles failed", error);
+    return { status: "error" };
+  }
 
-export const ROSTER_TABS: RosterTab[] = ["all", ...ROSTER_ROLES, "custom", "none"];
-
-export function isRosterTab(value: string): value is RosterTab {
-  return (ROSTER_TABS as string[]).includes(value);
+  return {
+    status: "ok",
+    data: (data ?? []).map((role) => ({ id: role.id, slug: role.slug, name: role.name, isSystem: role.is_system })),
+  };
 }
 
-export type RosterCounts = Record<RosterTab, number>;
+export function isRosterTab(value: string, roles: RosterRoleTab[]): boolean {
+  return value === "all" || value === "none" || roles.some((role) => role.id === value);
+}
+
+export type RosterCounts = Record<string, number>;
 
 export type TeamMember = {
   userId: string;
   fullName: string;
   email: string;
   phone: string | null;
-  /** The built-in slug, or "custom" for a role this practice defined. */
-  role: TeamRole | "custom";
+  /** The granted role's slug, or "none" for someone waiting on one. */
+  role: string;
   /** The grant's actual role, which is what the select saves. */
   roleId: string | null;
   roleName: string;
@@ -175,7 +183,7 @@ async function pendingStaff(organizationId: string): Promise<Result<TeamMember[]
  */
 async function roleHolderPage(
   organizationId: string,
-  role: RosterRole | "custom" | null,
+  roleId: string | null,
   start: number,
   limit: number,
   staffIds: Set<string>,
@@ -188,10 +196,7 @@ async function roleHolderPage(
     .eq("organization_id", organizationId)
     .is("revoked_at", null);
 
-  // "custom" is not a slug — it is every role this practice defined for
-  // itself, which is exactly the roles that are not system ones.
-  if (role === "custom") query = query.eq("role.is_system", false);
-  else if (role) query = query.eq("role.slug", role);
+  if (roleId) query = query.eq("role_id", roleId);
 
   const { data, error, count } = await query
     .order("created_at", { ascending: false })
@@ -206,20 +211,11 @@ async function roleHolderPage(
     const granted = roleOf(row);
     if (!granted) return [];
 
-    // A role the practice defined itself has a slug no tab knows about. It is
-    // still a person holding a role, so it belongs on the roster under
-    // "custom" — dropping the row would hide them from the only screen that
-    // could change their role back.
-    const isBuiltIn = (ROSTER_ROLES as readonly string[]).includes(granted.slug);
-
     return [
-      toMember(
-        row.user_id,
-        one(row.user as Related),
-        isBuiltIn ? (granted.slug as TeamRole) : "custom",
-        staffIds.has(row.user_id),
-        { roleId: granted.id, roleName: granted.name },
-      ),
+      toMember(row.user_id, one(row.user as Related), granted.slug, staffIds.has(row.user_id), {
+        roleId: granted.id,
+        roleName: granted.name,
+      }),
     ];
   });
 
@@ -227,15 +223,14 @@ async function roleHolderPage(
 }
 
 /** How many people sit under each tab, for the badges on the tab strip. */
-export async function getRosterCounts(organizationId: string): Promise<Result<RosterCounts>> {
+export async function getRosterCounts(
+  organizationId: string,
+  rosterRoles: RosterRoleTab[],
+): Promise<Result<RosterCounts>> {
   const supabase = await createClient();
 
   const [{ data: grantRows, error: grantError }, pending] = await Promise.all([
-    supabase
-      .from("user_roles")
-      .select("role:role_id (id, slug, name, is_system)")
-      .eq("organization_id", organizationId)
-      .is("revoked_at", null),
+    supabase.from("user_roles").select("role_id").eq("organization_id", organizationId).is("revoked_at", null),
     pendingStaff(organizationId),
   ]);
 
@@ -244,18 +239,15 @@ export async function getRosterCounts(organizationId: string): Promise<Result<Ro
     return { status: "error" };
   }
 
-  const counts = Object.fromEntries(ROSTER_TABS.map((tab) => [tab, 0])) as RosterCounts;
+  const counts: RosterCounts = { none: pending.data.length, all: 0 };
+  for (const role of rosterRoles) counts[role.id] = 0;
 
+  let total = counts.none;
   for (const row of grantRows ?? []) {
-    const granted = roleOf(row);
-    if (!granted) continue;
-
-    if ((ROSTER_ROLES as readonly string[]).includes(granted.slug)) counts[granted.slug as RosterTab] += 1;
-    else counts.custom += 1;
+    if (row.role_id in counts) counts[row.role_id] += 1;
+    total += 1;
   }
-
-  counts.none = pending.data.length;
-  counts.all = (grantRows ?? []).filter((row) => roleOf(row) !== null).length + counts.none;
+  counts.all = total;
 
   return { status: "ok", data: counts };
 }

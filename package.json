@@ -14,7 +14,9 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",
-    "seed:demo": "node scripts/seed-demo.mjs"
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "ensure:super-admin": "node scripts/ensure-super-admin.mjs",
+    "cleanup:orphans": "node scripts/cleanup-orphaned-accounts.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
