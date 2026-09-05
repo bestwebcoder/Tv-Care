@@ -2,7 +2,7 @@
 -- PostgreSQL database cluster dump
 --
 
-\restrict r0zggIcQkMa5PqwkDZqU0egdP8HaWQZcqWiM6nOc4SXZb4SAqyFf1vMyoLrG1Zy
+\restrict XAoJE6hwFu2kJkQpglrIZC1waGx7f4LJaVTbOy0brLgnxHlBkcMyJy1XszV9Dy2
 
 SET default_transaction_read_only = off;
 
@@ -154,7 +154,7 @@ GRANT SET ON PARAMETER log_min_messages TO supabase_realtime_admin;
 
 
 
-\unrestrict r0zggIcQkMa5PqwkDZqU0egdP8HaWQZcqWiM6nOc4SXZb4SAqyFf1vMyoLrG1Zy
+\unrestrict XAoJE6hwFu2kJkQpglrIZC1waGx7f4LJaVTbOy0brLgnxHlBkcMyJy1XszV9Dy2
 
 --
 -- PostgreSQL database cluster dump complete
