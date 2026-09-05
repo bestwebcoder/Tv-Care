@@ -17,7 +17,13 @@ export default async function AdminEditPatientPage({
   const result = await getPet(petId);
   if (result.status === "error" || !result.data) notFound();
 
-  const [species, breeds] = await Promise.all([listSpecies(), listBreeds()]);
+  // This patient's own species and breed are kept in the lists even if an
+  // administrator has since retired them, so saving the form cannot quietly
+  // drop what the record already says.
+  const [species, breeds] = await Promise.all([
+    listSpecies(result.data.speciesId),
+    listBreeds({ includeId: result.data.breedId }),
+  ]);
 
   return (
     <div className="mx-auto grid w-full max-w-xl gap-6">

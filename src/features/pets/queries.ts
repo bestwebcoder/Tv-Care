@@ -201,34 +201,57 @@ export async function getPet(
 
 export type Option = { id: string; name: string };
 
-/** Species and breeds come from the database; nothing is hard-coded. */
-export async function listSpecies(): Promise<Option[]> {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * PostgREST's `or` takes a filter *string*, so anything interpolated into one
+ * has to be known-safe. These ids come from a record already read out of the
+ * database, but the guard is what makes that a fact rather than an assumption.
+ */
+function activeOr(includeId?: string | null): string {
+  return includeId && UUID.test(includeId) ? `is_active.eq.true,id.eq.${includeId}` : "is_active.eq.true";
+}
+
+/**
+ * Species and breeds come from the database; nothing is hard-coded. An
+ * administrator maintains both from Settings.
+ *
+ * Only the active entries are offered, which is the point of deactivating one
+ * — but an edit form must also show what the patient in front of it already
+ * is. `includeId` keeps that one row in the list however the vocabulary has
+ * moved on since, so opening a record whose species was retired and saving it
+ * does not silently reassign the animal.
+ */
+export async function listSpecies(includeId?: string | null): Promise<Option[]> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("species")
-    .select("id, name")
-    .eq("is_active", true)
-    .order("sort_order");
+    .select("id, name, is_active")
+    .or(activeOr(includeId))
+    .order("sort_order")
+    .order("name");
 
   if (error) {
     console.error("[pets] species list failed", error);
     return [];
   }
 
-  return data ?? [];
+  return (data ?? []).map((row) => ({ id: row.id, name: row.name }));
 }
 
-export async function listBreeds(speciesId?: string): Promise<(Option & { speciesId: string })[]> {
+export async function listBreeds(
+  options: { speciesId?: string; includeId?: string | null } = {},
+): Promise<(Option & { speciesId: string })[]> {
   const supabase = await createClient();
 
   let query = supabase
     .from("breeds")
     .select("id, name, species_id")
-    .eq("is_active", true)
+    .or(activeOr(options.includeId))
     .order("name");
 
-  if (speciesId) query = query.eq("species_id", speciesId);
+  if (options.speciesId) query = query.eq("species_id", options.speciesId);
 
   const { data, error } = await query;
 

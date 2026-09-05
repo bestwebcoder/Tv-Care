@@ -33,7 +33,13 @@ export default async function EditPetPage({ params }: PageProps<"/client/pets/[p
     notFound();
   }
 
-  const [species, breeds] = await Promise.all([listSpecies(), listBreeds()]);
+  // This patient's own species and breed are kept in the lists even if an
+  // administrator has since retired them, so saving the form cannot quietly
+  // drop what the record already says.
+  const [species, breeds] = await Promise.all([
+    listSpecies(result.data.speciesId),
+    listBreeds({ includeId: result.data.breedId }),
+  ]);
 
   return (
     <div className="mx-auto grid w-full max-w-xl gap-6">

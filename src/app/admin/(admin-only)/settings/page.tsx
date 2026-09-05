@@ -6,11 +6,13 @@ import { BranchManager } from "@/components/branches/branch-manager";
 import { HeroImageForm } from "@/components/organizations/hero-image-form";
 import { LogoImageForm } from "@/components/organizations/logo-image-form";
 import { SettingsForm } from "@/components/organizations/settings-form";
+import { SpeciesManager } from "@/components/species/species-manager";
 import { ErrorState } from "@/components/states/error-state";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireRole } from "@/features/auth/session";
 import { listBranchesForAdmin } from "@/features/branches/queries";
 import { getOrganizationHeroImages, getOwnOrganization } from "@/features/organizations/queries";
+import { listSpeciesForAdmin } from "@/features/species/queries";
 
 export const metadata: Metadata = { title: "Settings · TV Care" };
 
@@ -27,10 +29,11 @@ export default async function AdminSettingsPage() {
     );
   }
 
-  const [organization, heroImages, branches] = await Promise.all([
+  const [organization, heroImages, branches, species] = await Promise.all([
     getOwnOrganization(organizationId),
     getOrganizationHeroImages(organizationId),
     listBranchesForAdmin(organizationId),
+    listSpeciesForAdmin(),
   ]);
 
   return (
@@ -50,6 +53,7 @@ export default async function AdminSettingsPage() {
         <>
           <SettingsForm organization={organization.data} />
           <BranchManager branches={branches.status === "ok" ? branches.data : []} />
+          <SpeciesManager species={species.status === "ok" ? species.data : []} />
           <LogoImageForm logoUrl={organization.data.logoUrl} footerShowLogo={organization.data.footerShowLogo} />
           <HeroImageForm heroImages={heroImages.status === "ok" ? heroImages.data : []} />
 

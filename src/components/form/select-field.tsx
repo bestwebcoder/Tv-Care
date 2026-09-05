@@ -23,6 +23,13 @@ type SelectFieldProps = {
   hint?: string;
   errors?: string[];
   disabled?: boolean;
+  /**
+   * Pass where two forms on one page share a field name — Settings has a
+   * species picker in both the add-breed form and each edit dialog, and
+   * without this the label points at whichever trigger the browser finds
+   * first. Matches the `id` escape hatch on `Field`.
+   */
+  id?: string;
 };
 
 /**
@@ -43,9 +50,11 @@ export function SelectField({
   hint,
   errors,
   disabled,
+  id,
 }: SelectFieldProps) {
-  const errorId = `${name}-error`;
-  const hintId = `${name}-hint`;
+  const selectId = id ?? name;
+  const errorId = `${selectId}-error`;
+  const hintId = `${selectId}-hint`;
   const hasError = Boolean(errors?.length);
 
   const labelFor = (current: unknown) =>
@@ -53,7 +62,7 @@ export function SelectField({
 
   return (
     <div className="grid gap-2">
-      <Label htmlFor={name}>{label}</Label>
+      <Label htmlFor={selectId}>{label}</Label>
 
       <Select
         name={name}
@@ -63,7 +72,7 @@ export function SelectField({
         disabled={disabled}
       >
         <SelectTrigger
-          id={name}
+          id={selectId}
           aria-invalid={hasError || undefined}
           aria-describedby={cn(hasError && errorId, hint && hintId) || undefined}
           className={cn("h-11 w-full", hasError && "border-destructive")}
