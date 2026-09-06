@@ -447,6 +447,44 @@ const SERVICE_PRICES_TAKA = {
 };
 const SERVICE_TAX_RATE_PERCENT = 5;
 
+/**
+ * The one category that leaves /services for a page of its own.
+ *
+ * src/lib/service-pages.ts routes a category to /training-education when its
+ * NAME contains "training", "education" or "mentorship" — matching on the name
+ * rather than an id, because an id belongs to one practice and that file ships
+ * to all of them. So this name is what puts these programmes on that page, and
+ * without a category matching those words both /training-education and the
+ * "Service blocks" card in Website → Training & Education render empty.
+ *
+ * Here rather than in a migration for the same reason as the price list above:
+ * which programmes a practice teaches, and what it charges for them, is a demo
+ * practice's business and not the schema's.
+ */
+const TRAINING_CATEGORY = {
+  name: "Training & Education",
+  description: "Programmes for clinic teams and veterinary students.",
+  icon: "graduation-cap",
+  sortOrder: 110,
+};
+
+const TRAINING_PROGRAMMES = [
+  {
+    name: "Clinical Skills Workshop",
+    tagline: "A hands-on day for practising teams",
+    minutes: 480,
+    taka: 12000,
+    sortOrder: 10,
+  },
+  {
+    name: "Student Mentorship Programme",
+    tagline: "Structured placement support for veterinary students",
+    minutes: 120,
+    taka: 4000,
+    sortOrder: 20,
+  },
+];
+
 function yearsAgo(years) {
   const date = new Date();
   date.setUTCFullYear(date.getUTCFullYear() - Math.floor(years));
@@ -703,6 +741,38 @@ async function main() {
 
     serviceRecords[name] = service.id;
     servicePricePaisa[name] = service.price_paisa === 0 ? taka * 100 : service.price_paisa;
+  }
+
+  // Training & Education — the category that gives /training-education
+  // something to render. See TRAINING_CATEGORY above for why the name is the
+  // part that matters. ensureRow only inserts what is missing, so a re-run
+  // never clobbers wording an admin has since edited on the website screen.
+  const trainingCategoryId = await ensureRow(
+    "service_categories",
+    { organization_id: organizationId, name: TRAINING_CATEGORY.name },
+    {
+      description: TRAINING_CATEGORY.description,
+      icon: TRAINING_CATEGORY.icon,
+      sort_order: TRAINING_CATEGORY.sortOrder,
+    },
+  );
+
+  for (const programme of TRAINING_PROGRAMMES) {
+    await ensureRow(
+      "services",
+      { organization_id: organizationId, name: programme.name },
+      {
+        category_id: trainingCategoryId,
+        tagline: programme.tagline,
+        duration_minutes: programme.minutes,
+        price_paisa: programme.taka * 100,
+        tax_rate_percent: SERVICE_TAX_RATE_PERCENT,
+        sort_order: programme.sortOrder,
+        // Teaching is arranged with the practice, not booked into one vet's
+        // calendar, so it carries no doctor requirement.
+        requires_doctor: false,
+      },
+    );
   }
 
   // ---------------------------------------------------------------------
