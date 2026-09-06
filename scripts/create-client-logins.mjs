@@ -24,18 +24,27 @@
  *
  * THE PASSWORD
  *
- * Every account is created with the same PIN, passed with --pin. Six digits is
- * the shape client credentials already take in this application
- * (pinPasswordSchema in src/lib/validation/auth.ts), so this is not a hole
- * punched through the password policy — but one PIN shared across a roster is
- * only safe where the people are fictional. A client's portal shows their
- * pets' medical records, and anyone who knows the pattern can read any of them.
- * Hence the local-only refusal below, matching scripts/seed-demo.mjs.
+ * Every account is created with the same password, passed with --password, and
+ * it must satisfy the same policy as passwordSchema in
+ * src/lib/validation/auth.ts (and auth.minimum_password_length /
+ * password_requirements in supabase/config.toml). Registration used to accept
+ * a 6-digit PIN and this script took --pin to match; that rule is gone, and a
+ * short PIN is now rejected by the auth server itself.
+ *
+ * One password shared across a roster is only safe where the people are
+ * fictional. A client's portal shows their pets' medical records, and anyone
+ * who knows the pattern can read any of them. Hence the local-only refusal
+ * below, matching scripts/seed-demo.mjs.
+ *
+ * The accounts are created pre-confirmed (email_confirm: true). Email
+ * confirmation is required for people who register themselves; these are
+ * provisioned by an administrator for clients already on the roster, and there
+ * is no inbox to send a fictional address a link to.
  *
  * Defaults to a dry run.
  *
- *   node scripts/create-client-logins.mjs --pin 123456
- *   node scripts/create-client-logins.mjs --pin 123456 --apply
+ *   node scripts/create-client-logins.mjs --password 'Demo-Password-123'
+ *   node scripts/create-client-logins.mjs --password 'Demo-Password-123' --apply
  */
 
 import { readFileSync } from "node:fs";
@@ -63,8 +72,20 @@ const url = env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
 
 const apply = process.argv.includes("--apply");
-const pinFlag = process.argv.indexOf("--pin");
-const pin = pinFlag === -1 ? null : process.argv[pinFlag + 1];
+const passwordFlag = process.argv.indexOf("--password");
+const password = passwordFlag === -1 ? null : process.argv[passwordFlag + 1];
+
+/** The policy passwordSchema enforces in the app, restated here so a rejection
+ *  is reported before any account is touched rather than by the auth server
+ *  halfway through the roster. */
+function policyFailure(value) {
+  if (value.length < 10) return "at least 10 characters";
+  if (value.length > 72) return "72 characters or fewer";
+  if (!/[a-z]/.test(value)) return "a lowercase letter";
+  if (!/[A-Z]/.test(value)) return "an uppercase letter";
+  if (!/\d/.test(value)) return "a number";
+  return null;
+}
 
 if (!url || !serviceRoleKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
@@ -73,8 +94,15 @@ if (!url || !serviceRoleKey) {
 
 // Not defaulted. A shared credential is a decision, and it should have to be
 // typed out by the person making it rather than inherited from a constant.
-if (!pin || !/^\d{6}$/.test(pin)) {
-  console.error("Pass --pin <6 digits>, for example: --pin 123456");
+if (!password) {
+  console.error("Pass --password <password>, for example: --password 'Demo-Password-123'");
+  process.exit(1);
+}
+
+const missing = policyFailure(password);
+
+if (missing) {
+  console.error(`That password is rejected by the auth policy: it needs ${missing}.`);
   process.exit(1);
 }
 
@@ -82,7 +110,7 @@ if (!pin || !/^\d{6}$/.test(pin)) {
 // this uses the service role key, and it sets one known credential on every
 // account it touches.
 if (!/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(url)) {
-  console.error(`Refusing to set a shared PIN on a non-local database:\n  ${url}`);
+  console.error(`Refusing to set a shared password on a non-local database:\n  ${url}`);
   console.error("Real clients get their own credential, through registration or a password reset.");
   process.exit(1);
 }
@@ -146,7 +174,7 @@ async function main() {
     // fabricate a second client record for the same person.
     const { data: account, error: createError } = await db.auth.admin.createUser({
       email: client.email,
-      password: pin,
+      password,
       email_confirm: true,
       user_metadata: { full_name: client.full_name, phone: client.phone },
     });
@@ -190,7 +218,7 @@ async function main() {
     console.log(`  + ${client.full_name} — ${client.email}`);
   }
 
-  console.log(`\nCreated ${created} account(s). Every one signs in with the PIN you passed.`);
+  console.log(`\nCreated ${created} account(s). Every one signs in with the password you passed.`);
 }
 
 main().catch((cause) => {

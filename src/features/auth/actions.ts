@@ -28,6 +28,11 @@ async function redirectHome(): Promise<never> {
 // actions they use it with.
 export type { FormState };
 
+// Not exported: a "use server" module may only export async functions, and
+// exporting a plain constant from one silently voids every other export in it.
+const CONFIRMATION_SENT =
+  "Check your inbox — we have sent you a link to confirm your email address. You can sign in once you have clicked it.";
+
 async function siteOrigin(): Promise<string> {
   const headerList = await headers();
   const host = headerList.get("host") ?? "localhost:3000";
@@ -55,14 +60,18 @@ export async function registerAction(
   const { fullName, email, phone, password } = parsed.data;
   const supabase = await createClient();
 
-  // Email confirmations are disabled for this project (config.toml,
-  // auth.email.enable_confirmations = false): signUp returns a session
-  // directly, and the client is signed in immediately — no confirmation
-  // link to send or wait for.
+  // Email confirmations are on (config.toml, auth.email.enable_confirmations
+  // = true), so signUp returns no session: the account exists but cannot sign
+  // in until the link in the email is clicked. There is nothing to redirect
+  // into here — the caller shows "check your inbox" instead.
   const { error } = await supabase.auth.signUp({
     email,
     password,
     options: {
+      // Where the confirmation link lands. Verification happens server-side in
+      // /auth/confirm from the token hash, so the link works even when it is
+      // opened on a different device than the one that registered.
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/client`,
       // signup_source is what tells the database trigger to provision a pet
       // owner. Accounts created any other way get a profile and nothing more.
       data: { full_name: fullName, phone, signup_source: "self_registration" },
@@ -74,13 +83,6 @@ export async function registerAction(
 
     // 23505 is the unique index on (organization_id, phone) raised by the
     // signup trigger, surfaced through the auth API as a database error.
-    if (error.message.includes("already registered")) {
-      return {
-        status: "error",
-        message: "An account with this email already exists. Try signing in instead.",
-      };
-    }
-
     if (error.message.includes("duplicate key") || error.message.includes("23505")) {
       return {
         status: "error",
@@ -94,7 +96,16 @@ export async function registerAction(
     };
   }
 
-  return redirectHome();
+  // Deliberately the same answer whether or not that address was already
+  // taken. With confirmations enabled Supabase does not report an existing
+  // email as an error — it returns a decoy user instead — and matching that
+  // here is what stops this form being used to discover who banks with the
+  // practice. Somebody re-registering an existing address gets no new account
+  // and no new email; the address's real owner is unaffected.
+  return {
+    status: "success",
+    message: CONFIRMATION_SENT,
+  };
 }
 
 export async function loginAction(_previous: FormState, formData: FormData): Promise<FormState> {

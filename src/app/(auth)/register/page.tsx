@@ -1,20 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import { RegisterForm } from "./register-form";
 
 export const metadata: Metadata = { title: "Create an account · TV Care" };
 
+// The link back to sign in lives inside the form: once registration succeeds
+// the form is replaced by a "confirm your email" panel, and "Already have an
+// account?" is the wrong sentence to leave sitting under it.
 export default function RegisterPage() {
-  return (
-    <>
-      <RegisterForm />
-      <p className="text-muted-foreground mt-6 text-center text-sm">
-        Already have an account?{" "}
-        <Link href="/login" className="text-foreground font-medium underline underline-offset-4">
-          Sign in
-        </Link>
-      </p>
-    </>
-  );
+  return <RegisterForm />;
 }
