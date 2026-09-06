@@ -4,11 +4,13 @@ import { GraduationCap } from "lucide-react";
 import { GoldRule, MarketingBand } from "@/components/marketing/marketing-band";
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
+import { SectionCards } from "@/components/marketing/section-cards";
 import { ServiceCategorySection } from "@/components/marketing/service-category-section";
 import { EmptyState } from "@/components/states/empty-state";
 import { ErrorState } from "@/components/states/error-state";
 import { bookingHrefForVisitor } from "@/features/auth/session";
 import { getPublicOrganizationInfo } from "@/features/organizations/queries";
+import { getPublicPageSectionItems, type PageSectionItems } from "@/features/page-sections/queries";
 import { getPublicServices } from "@/features/services/queries";
 import { siteContentValue } from "@/features/site-content/fields";
 import { getPublicSiteContent } from "@/features/site-content/queries";
@@ -44,10 +46,12 @@ export default async function TrainingEducationPage() {
     : { status: "ok" as const, data: [] };
 
   const practiceName = organization?.name ?? "The Traveling Vet";
-  const [content, bookingHref] = await Promise.all([
+  const [content, bookingHref, sections] = await Promise.all([
     organization ? getPublicSiteContent(organization.id) : Promise.resolve({}),
     bookingHrefForVisitor(),
+    organization ? getPublicPageSectionItems(organization.id, "training") : Promise.resolve<PageSectionItems>({}),
   ]);
+  const audiences = sections.audiences ?? [];
 
   const categories = servicesResult.status === "ok" ? categoriesFor(intoCategories(servicesResult.data), HREF) : [];
 
@@ -75,6 +79,15 @@ export default async function TrainingEducationPage() {
           }}
         />
         <GoldRule />
+
+        {/* Admin-editable via /admin/website/sections/training. Above the
+            programmes because it says who they are for, and nothing renders
+            until an admin adds a card. */}
+        {audiences.length > 0 ? (
+          <div className="mx-auto w-full max-w-6xl px-4 pt-12 sm:px-6 lg:px-14">
+            <SectionCards items={audiences} variant="cards" columns={3} tone="marketing" />
+          </div>
+        ) : null}
 
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-14">
           {servicesResult.status === "error" ? (
