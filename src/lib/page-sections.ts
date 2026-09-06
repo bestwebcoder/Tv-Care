@@ -15,16 +15,18 @@
  * Pages that own card lists, and so may appear in page_section_items.page —
  * this list matches that column's check constraint.
  */
-export const PAGE_KEYS = ["home", "about", "services", "contact"] as const;
+export const PAGE_KEYS = ["home", "about", "services", "contact", "training"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 /**
- * Every page the website editor offers. Training and the footer are here
- * because they have editable text like the others, but neither is a PageKey:
- * neither has a card list, so no row ever names them, and neither is in the
- * table's constraint.
+ * Every page the website editor offers. The footer is here because it has
+ * editable text like the others but no card list, so no row ever names it and
+ * it is not in the table's constraint.
+ *
+ * Training was in the same position until 20261011000100_training_page_sections
+ * gave it a card list; it is a PageKey now.
  */
-export const EDITOR_PAGE_KEYS = [...PAGE_KEYS, "training", "footer"] as const;
+export const EDITOR_PAGE_KEYS = [...PAGE_KEYS, "footer"] as const;
 export type EditorPageKey = (typeof EDITOR_PAGE_KEYS)[number];
 
 export type SectionDefinition = {
@@ -119,10 +121,18 @@ export const PAGE_SECTIONS: PageDefinition[] = [
     key: "training",
     label: "Training & Education page",
     href: "/training-education",
-    blurb: "The hero, the closing call to action, and the wording of every programme block on the page.",
+    blurb:
+      "The hero, the closing call to action, the “Who we train” cards, and the wording of every programme block on the page.",
     serviceSections: "dedicated",
-    // No card lists of its own — the blocks are services.
-    sections: [],
+    sections: [
+      {
+        key: "audiences",
+        label: "Who we train",
+        description:
+          "Cards above the programmes, saying who this teaching is for — clinic teams, students, shelter staff. Leave empty and nothing renders.",
+        usesIcon: true,
+      },
+    ],
   },
   {
     key: "contact",
