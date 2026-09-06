@@ -4,7 +4,6 @@ import {
   loginSchema,
   normalizePhone,
   passwordSchema,
-  pinPasswordSchema,
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation/auth";
@@ -13,8 +12,8 @@ const validRegistration = {
   fullName: "Rehana Khatun",
   email: "Rehana@Example.com",
   phone: "01712345678",
-  password: "482913",
-  confirmPassword: "482913",
+  password: "Test-Password-123",
+  confirmPassword: "Test-Password-123",
 };
 
 describe("normalizePhone", () => {
@@ -46,10 +45,10 @@ describe("registerSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects mismatched PINs against the confirm field", () => {
+  it("rejects mismatched passwords against the confirm field", () => {
     const result = registerSchema.safeParse({
       ...validRegistration,
-      confirmPassword: "111111",
+      confirmPassword: "Test-Password-124",
     });
 
     expect(result.success).toBe(false);
@@ -57,18 +56,21 @@ describe("registerSchema", () => {
   });
 });
 
-describe("pinPasswordSchema mirrors the Supabase auth policy for client registration", () => {
+describe("registration holds the same password policy as every other role", () => {
+  // The 6-digit PIN registration used to accept is gone. These are the exact
+  // values that rule allowed, kept as tests so it cannot quietly come back.
   it.each([
-    ["12345", "fewer than 6 digits"],
-    ["1234567", "more than 6 digits"],
-    ["12a456", "not all digits"],
-    ["", "empty"],
-  ])("rejects %s (%s)", (pin) => {
-    expect(pinPasswordSchema.safeParse(pin).success).toBe(false);
-  });
+    ["482913", "a 6-digit PIN"],
+    ["12345", "shorter still"],
+    ["alllowercase123", "no uppercase letter"],
+  ])("rejects %s (%s)", (password) => {
+    const result = registerSchema.safeParse({
+      ...validRegistration,
+      password,
+      confirmPassword: password,
+    });
 
-  it("accepts exactly 6 digits", () => {
-    expect(pinPasswordSchema.safeParse("482913").success).toBe(true);
+    expect(result.success).toBe(false);
   });
 });
 

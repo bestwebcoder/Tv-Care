@@ -173,17 +173,38 @@ describe("registration provisions an account", () => {
   });
 });
 
+/** Clicks the confirmation link the way /auth/confirm does: server-side, from
+ *  the token hash in the email, so it works on any device. */
+async function confirmEmail(address: string): Promise<void> {
+  const body = await waitForEmail(address, /confirm your tv care account/i);
+  const { error } = await anonClient().auth.verifyOtp({
+    type: "email",
+    token_hash: tokenHashFrom(body),
+  });
+  expect(error).toBeNull();
+}
+
 describe("sign in after registration", () => {
-  it("signs in immediately — no email confirmation required", async () => {
+  it("will not sign in until the email is confirmed", async () => {
     const suffix = uniqueSuffix();
     const signup = selfRegistration(suffix);
 
     const signedUp = await anonClient().auth.signUp(signup);
-    // Confirmations are disabled (config.toml, auth.email.enable_confirmations
-    // = false): signUp itself returns a session, so the client is already
-    // signed in before ever calling signInWithPassword.
-    expect(signedUp.data.user?.email_confirmed_at).not.toBeNull();
-    expect(signedUp.data.session).not.toBeNull();
+    // Confirmations are enabled (config.toml, auth.email.enable_confirmations
+    // = true): signUp returns the user but no session, so registerAction has
+    // nothing to sign anyone in with and shows "check your inbox" instead.
+    expect(signedUp.data.user?.email_confirmed_at).toBeFalsy();
+    expect(signedUp.data.session).toBeNull();
+
+    const tooEarly = await anonClient().auth.signInWithPassword({
+      email: signup.email,
+      password: PASSWORD,
+    });
+    expect(tooEarly.data.session).toBeNull();
+    // The exact code loginAction branches on to explain itself to the user.
+    expect(tooEarly.error?.code).toBe("email_not_confirmed");
+
+    await confirmEmail(signup.email);
 
     const signedIn = await anonClient().auth.signInWithPassword({
       email: signup.email,
@@ -191,6 +212,20 @@ describe("sign in after registration", () => {
     });
     expect(signedIn.error).toBeNull();
     expect(signedIn.data.session).not.toBeNull();
+  }, 45_000);
+
+  it("rejects a password the registration form would not accept", async () => {
+    // Guards config.toml against src/lib/validation/auth.ts drifting apart. A
+    // 6-digit PIN was valid before; the auth server itself must refuse it now,
+    // not merely the Zod schema in front of it.
+    const suffix = uniqueSuffix();
+    const { error } = await anonClient().auth.signUp({
+      ...selfRegistration(suffix),
+      password: "482913",
+    });
+
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("weak_password");
   });
 
   it("records the login in the audit trail", async () => {
@@ -198,6 +233,7 @@ describe("sign in after registration", () => {
     const signup = selfRegistration(suffix);
     const { data: signUpData } = await anonClient().auth.signUp(signup);
 
+    await confirmEmail(signup.email);
     await anonClient().auth.signInWithPassword({ email: signup.email, password: PASSWORD });
 
     const { data: logins } = await admin
@@ -209,7 +245,7 @@ describe("sign in after registration", () => {
     expect(logins!.length).toBeGreaterThanOrEqual(1);
     // The organization is resolved from the role the signup trigger granted.
     expect(logins![0].organization_id).not.toBeNull();
-  });
+  }, 45_000);
 });
 
 describe("password reset", () => {
