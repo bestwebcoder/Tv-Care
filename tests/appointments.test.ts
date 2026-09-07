@@ -258,6 +258,175 @@ describe("doctor availability windows cannot overlap", () => {
 
     expect(error?.code).toBe("23P01");
   });
+
+  it("allows the same hours on a different day, so one window can cover a working week", async () => {
+    // The add form writes one row per day it covers. Overlap is per weekday,
+    // so five days of identical hours must be five accepted inserts.
+    const days = [1, 2, 3].filter((day) => day !== new Date().getDay());
+
+    const { data, error } = await admin
+      .from("doctor_availability")
+      .insert(
+        days.map((weekday) => ({
+          doctor_id: doctorRecordA2,
+          organization_id: orgA,
+          weekday,
+          starts_at: "09:00",
+          ends_at: "17:00",
+        })),
+      )
+      .select("id");
+
+    expect(error).toBeNull();
+    expect(data).toHaveLength(days.length);
+  });
+});
+
+describe("a paused window keeps its hours but holds no time", () => {
+  let paused: string;
+
+  // Doctor A already holds a 00:00-23:30 window on today's weekday, and
+  // doctorRecordA2 holds 09:00-17:00 on 1-3. Any other day is free, whichever
+  // day this suite happens to run on.
+  const PAUSED_WEEKDAY = new Date().getDay() === 6 ? 0 : 6;
+
+  it("lets another window cover the hours a paused one holds", async () => {
+    const { data, error } = await admin
+      .from("doctor_availability")
+      .insert({
+        doctor_id: doctorRecordA,
+        organization_id: orgA,
+        weekday: PAUSED_WEEKDAY,
+        starts_at: "09:00",
+        ends_at: "12:00",
+        is_active: false,
+      })
+      .select("id")
+      .single();
+
+    expect(error).toBeNull();
+    paused = data!.id;
+
+    // The exclusion constraint's predicate is `deleted_at is null and is_active`,
+    // so a paused window is outside it — which is what lets a locum's hours sit
+    // over the hours of a doctor who is away.
+    const { error: coveringError } = await admin.from("doctor_availability").insert({
+      doctor_id: doctorRecordA,
+      organization_id: orgA,
+      weekday: PAUSED_WEEKDAY,
+      starts_at: "10:00",
+      ends_at: "11:00",
+    });
+
+    expect(coveringError).toBeNull();
+  });
+
+  it("refuses to resume while those hours are covered, rather than double-offering them", async () => {
+    const { error } = await admin
+      .from("doctor_availability")
+      .update({ is_active: true })
+      .eq("id", paused);
+
+    expect(error?.code).toBe("23P01");
+  });
+});
+
+describe("the practice's scheduling rules", () => {
+  it("ships with sane defaults", async () => {
+    const { data } = await admin
+      .from("organizations")
+      .select("booking_lead_minutes, booking_horizon_days, cancellation_notice_hours")
+      .eq("id", orgA)
+      .single();
+
+    expect(data!.booking_lead_minutes).toBeGreaterThanOrEqual(0);
+    expect(data!.booking_horizon_days).toBeGreaterThan(0);
+    expect(data!.cancellation_notice_hours).toBeGreaterThanOrEqual(0);
+  });
+
+  it("refuses a lead time longer than the constraint allows", async () => {
+    const { error } = await admin
+      .from("organizations")
+      .update({ booking_lead_minutes: 20_000 })
+      .eq("id", orgA);
+
+    expect(error?.code).toBe("23514");
+  });
+
+  it("refuses a horizon of no days at all", async () => {
+    const { error } = await admin.from("organizations").update({ booking_horizon_days: 0 }).eq("id", orgA);
+
+    expect(error?.code).toBe("23514");
+  });
+
+  it("lets an admin change them and a client change nothing", async () => {
+    // The seeded practice is shared with every other suite, so this puts back
+    // what it found — fixtures here cannot be cleaned up afterwards.
+    const { data: before } = await admin
+      .from("organizations")
+      .select("booking_lead_minutes, booking_horizon_days, cancellation_notice_hours")
+      .eq("id", orgA)
+      .single();
+
+    try {
+      const { error: adminError } = await adminA
+        .from("organizations")
+        .update({ booking_lead_minutes: 90, booking_horizon_days: 200, cancellation_notice_hours: 24 })
+        .eq("id", orgA);
+
+      expect(adminError).toBeNull();
+
+      const { data: clientWrite } = await clientA
+        .from("organizations")
+        .update({ booking_lead_minutes: 0 })
+        .eq("id", orgA)
+        .select("id");
+
+      // Row level security filters the row out rather than raising: no error,
+      // and nothing updated.
+      expect(clientWrite ?? []).toEqual([]);
+
+      const { data } = await admin
+        .from("organizations")
+        .select("booking_lead_minutes")
+        .eq("id", orgA)
+        .single();
+
+      expect(data!.booking_lead_minutes).toBe(90);
+    } finally {
+      await admin.from("organizations").update(before!).eq("id", orgA);
+    }
+  });
+});
+
+describe("rescheduling does not collide with the appointment being moved", () => {
+  it("accepts a new time overlapping the old one, because a row cannot exclude itself", async () => {
+    const starts = new Date(Date.now() + 200 * 60 * 60 * 1000);
+    starts.setUTCMinutes(0, 0, 0);
+    const ends = new Date(starts.getTime() + 60 * 60 * 1000);
+
+    const appointment = await insertAppointment({
+      organization_id: orgA,
+      client_id: clientRecordA,
+      pet_id: petA,
+      doctor_id: doctorRecordA2,
+      service_id: serviceA,
+      visit_type: "clinic",
+      starts_at: starts.toISOString(),
+      ends_at: ends.toISOString(),
+    });
+
+    // Half an hour later — squarely inside the hour it currently holds.
+    const { error } = await admin
+      .from("appointments")
+      .update({
+        starts_at: new Date(starts.getTime() + 30 * 60 * 1000).toISOString(),
+        ends_at: new Date(ends.getTime() + 30 * 60 * 1000).toISOString(),
+      })
+      .eq("id", appointment);
+
+    expect(error).toBeNull();
+  });
 });
 
 describe("cross-tenancy isolation", () => {

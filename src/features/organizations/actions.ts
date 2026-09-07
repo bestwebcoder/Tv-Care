@@ -15,7 +15,7 @@ import { describeLogoImageProblem, readLogoImage, uploadLogoImage } from "@/feat
 import { failure, invalid, text, type FormState } from "@/lib/forms";
 import { createClient } from "@/lib/supabase/server";
 import { optionalText, optionalTime } from "@/lib/validation/common";
-import { organizationSettingsSchema } from "@/lib/validation/organization";
+import { organizationSettingsSchema, schedulingRulesSchema } from "@/lib/validation/organization";
 
 /**
  * §7.5's "payment information" on the invoice PDF — a single admin-editable
@@ -78,6 +78,53 @@ export async function updateQuietHoursAction(_previous: FormState, formData: For
 
   revalidatePath("/admin/notifications");
   return { status: "success", message: start.data ? "Quiet hours saved." : "Quiet hours disabled." };
+}
+
+/**
+ * The practice's booking policy.
+ *
+ * Three numbers the booking engine reads on every slot check
+ * (src/features/appointments/availability.ts) and the client's own
+ * reschedule/cancel guard reads on every change
+ * (may_client_change_appointment). They belong to the practice, not to the
+ * code: a clinic taking walk-ins wants no lead time at all, and one running
+ * a surgery list wants a day of it.
+ */
+export async function updateSchedulingRulesAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const user = await requireRole("admin", "super_admin");
+  const organizationId = user.organizationIds[0];
+  if (!organizationId) return { status: "error", message: "Your account is not linked to a practice yet." };
+
+  const parsed = schedulingRulesSchema.safeParse({
+    bookingLeadMinutes: text(formData, "bookingLeadMinutes") ?? "",
+    bookingHorizonDays: text(formData, "bookingHorizonDays") ?? "",
+    cancellationNoticeHours: text(formData, "cancellationNoticeHours") ?? "",
+  });
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("organizations")
+    .update({
+      booking_lead_minutes: parsed.data.bookingLeadMinutes,
+      booking_horizon_days: parsed.data.bookingHorizonDays,
+      cancellation_notice_hours: parsed.data.cancellationNoticeHours,
+    })
+    .eq("id", organizationId);
+
+  if (error) {
+    return failure("organizations", error, "We could not save these rules just now. Please try again.");
+  }
+
+  // The times on offer change with them, everywhere they are offered.
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin/appointments/availability");
+  revalidatePath("/client/appointments");
+
+  return { status: "success", message: "Scheduling rules saved." };
 }
 
 /** §10's general practice settings — identity fields only; billing and quiet hours keep their own screens. */

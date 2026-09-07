@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { DoctorAvailabilityCard } from "@/components/appointments/availability-manager";
+import { EmptyState } from "@/components/states/empty-state";
 import { ErrorState } from "@/components/states/error-state";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireAccess } from "@/features/auth/access";
-import { listAvailabilityForDoctor } from "@/features/appointments/queries";
+import { listAvailabilityByDoctor } from "@/features/appointments/queries";
 import { listBranches } from "@/features/clients/queries";
 import { listDoctors } from "@/features/doctors/queries";
+import { CalendarClock } from "lucide-react";
 
 export const metadata: Metadata = { title: "Doctor availability · TV Care" };
 
@@ -26,8 +28,11 @@ export default async function AvailabilityAdminPage() {
     );
   }
 
-  const windowsByDoctor = await Promise.all(
-    doctors.data.map((doctor) => listAvailabilityForDoctor(doctor.id)),
+  // One read for every doctor's windows, including paused ones — a paused
+  // window has to be on screen or it can never be brought back.
+  const windows = await listAvailabilityByDoctor(
+    doctors.data.map((doctor) => doctor.id),
+    { includePaused: true },
   );
 
   return (
@@ -40,15 +45,27 @@ export default async function AvailabilityAdminPage() {
           </Link>
         </p>
         <p className="text-muted-foreground text-sm">
-          The working days, hours and breaks each doctor is bookable for. A gap between two windows on
-          the same day is a break — add a morning window and an afternoon window to leave one out.
+          The working days, hours and breaks each doctor is bookable for. A gap between two windows on the same day is a
+          break — add a morning window and an afternoon window to leave one out. How soon and how far ahead clients may
+          book are set in{" "}
+          <Link href="/admin/settings" className="underline underline-offset-4">
+            Settings
+          </Link>
+          .
         </p>
       </div>
 
-      {doctors.data.length === 0 ? (
+      {windows.status === "error" ? (
         <Card>
           <CardContent>
-            <ErrorState
+            <ErrorState title="Availability could not be loaded" />
+          </CardContent>
+        </Card>
+      ) : doctors.data.length === 0 ? (
+        <Card>
+          <CardContent>
+            <EmptyState
+              icon={CalendarClock}
               title="No doctors yet"
               description="Doctors are added to the practice before their availability can be configured."
             />
@@ -56,12 +73,12 @@ export default async function AvailabilityAdminPage() {
         </Card>
       ) : (
         <div className="grid gap-6">
-          {doctors.data.map((doctor, index) => (
+          {doctors.data.map((doctor) => (
             <DoctorAvailabilityCard
               key={doctor.id}
               doctorId={doctor.id}
               doctorName={doctor.fullName}
-              windows={windowsByDoctor[index].status === "ok" ? windowsByDoctor[index].data : []}
+              windows={windows.data.get(doctor.id) ?? []}
               branches={branches}
             />
           ))}
