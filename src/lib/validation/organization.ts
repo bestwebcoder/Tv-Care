@@ -33,3 +33,32 @@ export const organizationSettingsSchema = z.object({
 
 export type OrganizationSettingsInput = z.input<typeof organizationSettingsSchema>;
 export type OrganizationSettingsValues = z.output<typeof organizationSettingsSchema>;
+
+/**
+ * The practice's booking policy — how soon, how far ahead, and how late.
+ *
+ * Bounds mirror `organizations_booking_lead_sane`,
+ * `organizations_booking_horizon_sane` and
+ * `organizations_cancellation_notice_sane`; the database is the guarantee,
+ * this is so an administrator is told which number is wrong rather than
+ * shown a constraint name.
+ */
+export const schedulingRulesSchema = z.object({
+  bookingLeadMinutes: z.coerce
+    .number()
+    .int()
+    .min(0, "Use 0 to accept a booking right up to the appointment")
+    .max(10080, "A week of notice is the most this can be"),
+  bookingHorizonDays: z.coerce
+    .number()
+    .int()
+    .min(1, "Clients must be able to book at least a day ahead")
+    .max(730, "Two years is the most this can be"),
+  cancellationNoticeHours: z.coerce
+    .number()
+    .int()
+    .min(0, "Use 0 to let clients cancel at any time")
+    .max(168, "A week is the most this can be"),
+});
+
+export type SchedulingRulesValues = z.output<typeof schedulingRulesSchema>;

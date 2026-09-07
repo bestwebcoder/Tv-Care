@@ -8,6 +8,7 @@ import { FormAlert } from "@/components/form/form-alert";
 import { SubmitButton } from "@/components/form/submit-button";
 import { Button } from "@/components/ui/button";
 import { getAvailableSlotsAction, rescheduleAppointmentAction } from "@/features/appointments/actions";
+import { noSlotsMessage } from "@/features/appointments/messages";
 import { idleState } from "@/lib/forms";
 
 const TIME_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
@@ -61,7 +62,15 @@ export function RescheduleForm({
 
     let cancelled = false;
 
-    getAvailableSlotsAction({ doctorId, serviceId, visitType, date: dateValue }).then((result) => {
+    // Excluding this appointment: without it a 10:00–11:00 visit could not be
+    // moved to 10:30, because the time it is about to vacate counted as taken.
+    getAvailableSlotsAction({
+      doctorId,
+      serviceId,
+      visitType,
+      date: dateValue,
+      excludeAppointmentId: appointmentId,
+    }).then((result) => {
       if (cancelled) return;
       if (result.status === "error") setSlotsState({ status: "error" });
       else if (result.status === "empty") setSlotsState({ status: "empty", reason: result.reason });
@@ -71,7 +80,7 @@ export function RescheduleForm({
     return () => {
       cancelled = true;
     };
-  }, [doctorId, serviceId, visitType, dateValue]);
+  }, [appointmentId, doctorId, serviceId, visitType, dateValue]);
 
   const [state, formAction] = useActionState(rescheduleAppointmentAction, idleState);
 
@@ -98,11 +107,7 @@ export function RescheduleForm({
         {slotsState.status === "loading" ? <p className="text-muted-foreground text-sm">Checking availability…</p> : null}
         {slotsState.status === "error" ? <p className="text-destructive text-sm">Could not check availability.</p> : null}
         {slotsState.status === "empty" ? (
-          <p className="text-muted-foreground text-sm">
-            {slotsState.reason === "no_availability"
-              ? "This doctor is not scheduled to work then."
-              : "Fully booked for that day."}
-          </p>
+          <p className="text-muted-foreground text-sm">{noSlotsMessage(slotsState.reason)}</p>
         ) : null}
         {slotsState.status === "loaded" ? (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">

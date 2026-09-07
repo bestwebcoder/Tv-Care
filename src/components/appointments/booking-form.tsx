@@ -15,6 +15,7 @@ import {
   createAppointmentAction,
   getAvailableSlotsAction,
 } from "@/features/appointments/actions";
+import { noSlotsMessage } from "@/features/appointments/messages";
 import { VISIT_TYPE_LABELS, VISIT_TYPES } from "@/lib/validation/appointment";
 import { idleState } from "@/lib/forms";
 import { cn } from "@/lib/utils";
@@ -295,13 +296,7 @@ export function BookingForm({
               ) : null}
 
               {slotsState.status === "empty" ? (
-                <p className="text-muted-foreground text-sm">
-                  {slotsState.reason === "date_in_past"
-                    ? "That date has already passed — choose another."
-                    : slotsState.reason === "no_availability"
-                      ? "This doctor is not scheduled to work then. Try another date or doctor."
-                      : "Fully booked for that day. Try another date."}
-                </p>
+                <p className="text-muted-foreground text-sm">{noSlotsMessage(slotsState.reason)}</p>
               ) : null}
 
               {slotsState.status === "loaded" ? (
