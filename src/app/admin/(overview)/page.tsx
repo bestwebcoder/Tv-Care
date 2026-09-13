@@ -23,6 +23,7 @@ import { getAdminOperationalSummary, getAdminOverview, getAdminRevenue, getRecen
 import { requireAccess } from "@/features/auth/access";
 import { hasRole } from "@/features/auth/session";
 import { listPracticeDewormingStatuses } from "@/features/deworming/queries";
+import { countPendingPayments } from "@/features/payments/queries";
 import { listOpenDiagnosticsQueue } from "@/features/soap/queries";
 import { listPracticeVaccinationStatuses } from "@/features/vaccinations/queries";
 import { formatCurrency } from "@/lib/currency";
@@ -52,7 +53,7 @@ export default async function AdminDashboardPage() {
   startOfToday.setHours(0, 0, 0, 0);
   const startOfTomorrow = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
 
-  const [overview, activity, appointmentsToday, vaccinationStatuses, dewormingStatuses, revenue, operational, openDiagnostics] = await Promise.all([
+  const [overview, activity, appointmentsToday, vaccinationStatuses, dewormingStatuses, revenue, operational, openDiagnostics, pendingPayments] = await Promise.all([
     isAdmin ? getAdminOverview() : null,
     isAdmin && organizationId ? getRecentActivity(organizationId) : null,
     seesFrontDesk
@@ -67,7 +68,12 @@ export default async function AdminDashboardPage() {
     seesMoney ? getAdminRevenue() : null,
     isAdmin ? getAdminOperationalSummary() : null,
     seesLab ? listOpenDiagnosticsQueue() : null,
+    seesMoney ? countPendingPayments() : null,
   ]);
+
+  // Clients who have paid by bKash/Nagad/bank and are waiting to hear it arrived.
+  const paymentsAwaitingVerification: Metric =
+    pendingPayments?.status === "ok" ? { status: "ok", value: pendingPayments.data } : { status: "error" };
 
   // The lab's own "what needs my attention today": tests a doctor has ordered
   // and nobody has resulted yet.
@@ -120,6 +126,12 @@ export default async function AdminDashboardPage() {
             <>
               <AttentionCard label="Unpaid invoices" metric={revenue.unpaidInvoices} href="/admin/billing" icon={Receipt} />
               <AttentionCard
+                label="Payments awaiting verification"
+                metric={paymentsAwaitingVerification}
+                href="/admin/payments?status=pending"
+                icon={Wallet}
+              />
+              <AttentionCard
                 label="Today's revenue"
                 metric={revenue.todayRevenuePaisa}
                 href="/admin/payments"
@@ -152,7 +164,7 @@ export default async function AdminDashboardPage() {
                 icon={Syringe}
               />
               <AttentionCard
-                label="Deworming due this week"
+                label="Parasite treatments due this week"
                 metric={dewormingDueThisWeek}
                 href="/admin/deworming"
                 icon={Worm}

@@ -10,7 +10,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireRole } from "@/features/auth/session";
 import { listPets, signedPhotoUrl } from "@/features/pets/queries";
-import { listPetDewormingStatuses } from "@/features/deworming/queries";
+import { dewormingStatusesByPet, listPetDewormingStatuses } from "@/features/deworming/queries";
 import { listPetVaccinationStatuses } from "@/features/vaccinations/queries";
 
 export const metadata: Metadata = { title: "My pets · TV Care" };
@@ -36,9 +36,7 @@ export default async function ClientPetsPage({ searchParams }: PageProps<"/clien
   const vaccinationByPet = new Map(
     (vaccinationResult.status === "ok" ? vaccinationResult.data : []).map((row) => [row.petId, row]),
   );
-  const dewormingByPet = new Map(
-    (dewormingResult.status === "ok" ? dewormingResult.data : []).map((row) => [row.petId, row]),
-  );
+  const dewormingByPet = dewormingStatusesByPet(dewormingResult.status === "ok" ? dewormingResult.data : []);
 
   const total = result.status === "ok" ? result.data.length : 0;
   // A page beyond the end is clamped to the last one rather than rendered
@@ -109,7 +107,8 @@ export default async function ClientPetsPage({ searchParams }: PageProps<"/clien
               photoUrl={photos[index] ?? null}
               href={`/client/pets/${pet.id}`}
               nextVaccination={vaccinationByPet.get(pet.id) ?? null}
-              nextDeworming={dewormingByPet.get(pet.id) ?? null}
+              nextDeworming={dewormingByPet.get(pet.id)?.internal ?? null}
+              nextExternalTreatment={dewormingByPet.get(pet.id)?.external ?? null}
             />
           ))}
         </div>

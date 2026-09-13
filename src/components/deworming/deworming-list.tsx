@@ -14,12 +14,15 @@ import { addDewormingAction, removeDewormingAction, updateDewormingAction } from
 import type { DewormingRecord } from "@/features/deworming/queries";
 import { DEWORMING_INTERVAL_LABELS, DEWORMING_INTERVALS, computeNextDewormingDueDate, MissingCustomIntervalError } from "@/lib/deworming-interval";
 import { idleState } from "@/lib/forms";
+import { PARASITE_TYPE_DESCRIPTIONS, PARASITE_TYPE_TITLES, type ParasiteType } from "@/lib/parasite-type";
 import { gramsToKilograms } from "@/lib/units";
 
 type Props = {
   appointmentId: string;
   petId: string;
   doctorId: string;
+  /** Which section this is. Records are filtered to it here, so callers can pass the visit's full list. */
+  parasiteType: ParasiteType;
   records: DewormingRecord[];
   canEdit: boolean;
 };
@@ -30,9 +33,11 @@ function toDate(value: string | null | undefined): Date | undefined {
 
 /** Every field a deworming entry needs, shared by the add form and each row's edit form. */
 function DewormingFields({
+  parasiteType,
   defaults,
   errors,
 }: {
+  parasiteType: ParasiteType;
   defaults?: Partial<DewormingRecord>;
   errors?: Record<string, string[] | undefined>;
 }) {
@@ -57,6 +62,8 @@ function DewormingFields({
 
   return (
     <div className="grid gap-4">
+      <input type="hidden" name="parasiteType" value={parasiteType} />
+      {errors?.parasiteType ? <p className="text-destructive text-sm">{errors.parasiteType[0]}</p> : null}
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Product" name="product" defaultValue={defaults?.product ?? ""} errors={errors?.product} />
         <Field
@@ -69,7 +76,13 @@ function DewormingFields({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Route" name="route" defaultValue={defaults?.route ?? ""} placeholder="Oral, topical…" errors={errors?.route} />
+        <Field
+          label="Route"
+          name="route"
+          defaultValue={defaults?.route ?? ""}
+          placeholder={parasiteType === "external" ? "Spot-on, oral chew, collar…" : "Oral…"}
+          errors={errors?.route}
+        />
         <Field
           label="Weight (kg)"
           name="weightGrams"
@@ -130,7 +143,7 @@ function DewormingFields({
   );
 }
 
-function AddDewormingForm({ appointmentId, petId, doctorId }: Omit<Props, "records" | "canEdit">) {
+function AddDewormingForm({ appointmentId, petId, doctorId, parasiteType }: Omit<Props, "records" | "canEdit">) {
   const [state, formAction] = useActionState(addDewormingAction, idleState);
   const fieldErrors = state.status === "error" ? state.fieldErrors : undefined;
 
@@ -140,9 +153,11 @@ function AddDewormingForm({ appointmentId, petId, doctorId }: Omit<Props, "recor
       <input type="hidden" name="appointmentId" value={appointmentId} />
       <input type="hidden" name="petId" value={petId} />
       <input type="hidden" name="doctorId" value={doctorId} />
-      <DewormingFields errors={fieldErrors} />
+      <DewormingFields parasiteType={parasiteType} errors={fieldErrors} />
       <div>
-        <SubmitButton pendingLabel="Recording…">Record deworming</SubmitButton>
+        <SubmitButton pendingLabel="Recording…">
+          {parasiteType === "external" ? "Record external parasite treatment" : "Record deworming"}
+        </SubmitButton>
       </div>
     </form>
   );
@@ -207,7 +222,7 @@ function RecordRow({
         <input type="hidden" name="dewormingId" value={record.id} />
         <input type="hidden" name="appointmentId" value={appointmentId} />
         <input type="hidden" name="petId" value={petId} />
-        <DewormingFields defaults={record} errors={fieldErrors} />
+        <DewormingFields parasiteType={record.parasiteType} defaults={record} errors={fieldErrors} />
         <div className="flex gap-2">
           <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
           <Button type="button" variant="outline" onClick={() => setEditing(false)}>
@@ -219,24 +234,33 @@ function RecordRow({
   );
 }
 
-export function DewormingList({ appointmentId, petId, doctorId, records, canEdit }: Props) {
+export function DewormingList({ appointmentId, petId, doctorId, parasiteType, records, canEdit }: Props) {
+  const visible = records.filter((record) => record.parasiteType === parasiteType);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Deworming</CardTitle>
+        <CardTitle className="text-base">{PARASITE_TYPE_TITLES[parasiteType]}</CardTitle>
+        <p className="text-muted-foreground text-sm">{PARASITE_TYPE_DESCRIPTIONS[parasiteType]}</p>
       </CardHeader>
       <CardContent className="grid gap-4">
-        {records.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No deworming recorded for this visit yet.</p>
+        {visible.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            {parasiteType === "external"
+              ? "No external parasite treatment recorded for this visit yet."
+              : "No deworming recorded for this visit yet."}
+          </p>
         ) : (
           <ul className="grid gap-2">
-            {records.map((record) => (
+            {visible.map((record) => (
               <RecordRow key={record.id} record={record} appointmentId={appointmentId} petId={petId} canEdit={canEdit} />
             ))}
           </ul>
         )}
 
-        {canEdit ? <AddDewormingForm appointmentId={appointmentId} petId={petId} doctorId={doctorId} /> : null}
+        {canEdit ? (
+          <AddDewormingForm appointmentId={appointmentId} petId={petId} doctorId={doctorId} parasiteType={parasiteType} />
+        ) : null}
       </CardContent>
     </Card>
   );

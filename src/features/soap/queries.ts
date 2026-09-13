@@ -14,9 +14,9 @@ import { createClient } from "@/lib/supabase/server";
 const SOAP_COLUMNS = `
   id, appointment_id, pet_id, organization_id, doctor_id, version, status,
   finalized_at, superseded_at, created_at, updated_at,
-  chief_complaint, history, duration, appetite, water_intake, urination,
+  chief_complaint, history, owner_history, prior_medications, duration, appetite, water_intake, urination,
   defecation, vomiting, diarrhea, coughing, sneezing, other_observations,
-  temperature_celsius, pulse_bpm, respiratory_rate_bpm, weight_grams,
+  temperature_celsius, temperature_fahrenheit, pulse_bpm, respiratory_rate_bpm, weight_grams,
   body_condition_score, mucous_membrane, capillary_refill_time, hydration_status,
   general_appearance, exam_eyes, exam_ears, exam_nose, exam_oral_cavity,
   exam_cardiovascular, exam_respiratory, exam_gastrointestinal, exam_urinary,
@@ -53,6 +53,8 @@ export type SoapRecordDetail = {
 
   chiefComplaint: string | null;
   history: string | null;
+  ownerHistory: string | null;
+  priorMedications: string | null;
   duration: string | null;
   appetite: string | null;
   waterIntake: string | null;
@@ -65,6 +67,7 @@ export type SoapRecordDetail = {
   otherObservations: string | null;
 
   temperatureCelsius: number | null;
+  temperatureFahrenheit: number | null;
   pulseBpm: number | null;
   respiratoryRateBpm: number | null;
   weightGrams: number | null;
@@ -129,6 +132,8 @@ function toDetail(row: any): SoapRecordDetail {
 
     chiefComplaint: row.chief_complaint,
     history: row.history,
+    ownerHistory: row.owner_history,
+    priorMedications: row.prior_medications,
     duration: row.duration,
     appetite: row.appetite,
     waterIntake: row.water_intake,
@@ -141,6 +146,7 @@ function toDetail(row: any): SoapRecordDetail {
     otherObservations: row.other_observations,
 
     temperatureCelsius: row.temperature_celsius,
+    temperatureFahrenheit: row.temperature_fahrenheit,
     pulseBpm: row.pulse_bpm,
     respiratoryRateBpm: row.respiratory_rate_bpm,
     weightGrams: row.weight_grams,

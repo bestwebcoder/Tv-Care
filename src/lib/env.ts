@@ -43,6 +43,13 @@ const serverEnvSchema = z.object({
   VAPID_PRIVATE_KEY: optional(z.string().min(1)),
   VAPID_SUBJECT: optional(z.string().min(1)),
   NOTIFICATION_CRON_SECRET: optional(z.string().min(1)),
+  // Online payments (SSLCommerz). Optional: with no store credentials the
+  // "Pay online" option is simply not offered, and clients pay by submitting a
+  // bKash/Nagad/bank transaction ID instead.
+  SSLCOMMERZ_STORE_ID: optional(z.string().min(1)),
+  SSLCOMMERZ_STORE_PASSWORD: optional(z.string().min(1)),
+  // "true" sends checkouts to the live gateway; anything else uses the sandbox.
+  SSLCOMMERZ_LIVE: optional(z.enum(["true", "false"])),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

@@ -38,6 +38,8 @@ export default async function AppointmentInvoicePage({
 
   const [existingResult, doctor] = await Promise.all([getInvoiceForAppointment(appointmentId), getOwnDoctorRecord()]);
   const canManageBilling = doctor.status === "ok" && doctor.data?.canManageBilling === true;
+  // A traveling vet collects payment for their own visits without billing access.
+  const canCollectOnSite = doctor.status === "ok" && Boolean(doctor.data) && doctor.data?.id === appointment.doctorId;
 
   const backLink = (
     <p className="text-muted-foreground text-sm">
@@ -66,6 +68,7 @@ export default async function AppointmentInvoicePage({
           refunds={refundsResult.status === "ok" ? refundsResult.data : []}
           pdfUrl={pdfUrl}
           canEdit={canManageBilling}
+          canCollectOnSite={canCollectOnSite}
         />
       </div>
     );

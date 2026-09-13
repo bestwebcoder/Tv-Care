@@ -42,7 +42,8 @@ function toDetail(row: any): ClientDetail {
     userId: row.user_id,
     organizationId: row.organization_id,
     fullName: row.full_name,
-    phone: row.phone,
+    // Null only for a self-registered client who has not completed their profile.
+    phone: row.phone ?? "",
     alternatePhone: row.alternate_phone,
     email: row.email,
     address: row.address,
@@ -181,4 +182,30 @@ export async function listBranches(): Promise<{ id: string; name: string }[]> {
   }
 
   return data ?? [];
+}
+
+/**
+ * Whether the signed-in client still has to complete their profile. "none"
+ * when there is no client record at all — that is provisioning failing, which
+ * the pages already explain, not something the profile screen can fix.
+ */
+export async function getOwnProfileCompletion(): Promise<Result<"complete" | "incomplete" | "none">> {
+  const user = await getSessionUser();
+  if (!user) return { status: "ok", data: "none" };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .select("profile_completed_at")
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[clients] profile completion lookup failed", error);
+    return { status: "error" };
+  }
+
+  if (!data) return { status: "ok", data: "none" };
+  return { status: "ok", data: data.profile_completed_at ? "complete" : "incomplete" };
 }

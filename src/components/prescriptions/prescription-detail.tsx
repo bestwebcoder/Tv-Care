@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { Download, Printer } from "lucide-react";
 import Link from "next/link";
 
+import { PrescriptionItemSummary } from "@/components/prescriptions/prescription-item-list";
 import { RevisePrescriptionButton } from "@/components/prescriptions/revise-button";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -58,25 +59,12 @@ export async function PrescriptionDetailView({
         <CardContent className="grid gap-3 text-sm">
           <p className="text-muted-foreground">
             {[prescription.speciesName, prescription.breedName].filter(Boolean).join(" · ") || "Species not recorded"}
+            {prescription.weight ? ` · ${prescription.weight}` : ""}
           </p>
           <ul className="grid gap-2">
             {prescription.items.map((item) => (
               <li key={item.id} className="rounded-lg border p-3">
-                <p className="font-medium">{item.drugName}</p>
-                <p className="text-muted-foreground text-xs">
-                  {[item.strength, item.formulation].filter(Boolean).join(" · ")}
-                </p>
-                <p className="text-muted-foreground text-xs" data-numeric>
-                  {item.computedDose != null
-                    ? `${item.computedDose}${item.doseUnit ?? ""}`
-                    : item.dosePerKg != null
-                      ? `${item.dosePerKg}${item.doseUnit ?? ""}/kg`
-                      : "No dose recorded"}
-                  {item.route ? ` · ${item.route}` : ""}
-                  {item.frequency ? ` · ${item.frequency}` : ""}
-                  {item.duration ? ` · ${item.duration}` : ""}
-                </p>
-                {item.instructions ? <p className="text-sm">{item.instructions}</p> : null}
+                <PrescriptionItemSummary item={item} />
               </li>
             ))}
           </ul>

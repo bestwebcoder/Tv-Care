@@ -75,3 +75,70 @@ export const refundSchema = z.object({
 });
 
 export type RefundInput = z.infer<typeof refundSchema>;
+
+// ---------------------------------------------------------------------------
+// Payments that do not start at a billing desk (20261013000500).
+// ---------------------------------------------------------------------------
+
+export const PAYMENT_STATUSES = ["completed", "pending", "failed"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  completed: "Received",
+  pending: "Awaiting verification",
+  failed: "Not received",
+};
+
+export const PAYMENT_SOURCES = ["staff", "doctor_on_site", "client_submission", "online_gateway"] as const;
+export type PaymentSource = (typeof PAYMENT_SOURCES)[number];
+
+export const PAYMENT_SOURCE_LABELS: Record<PaymentSource, string> = {
+  staff: "Recorded by the clinic",
+  doctor_on_site: "Collected on site",
+  client_submission: "Submitted by client",
+  online_gateway: "Paid online",
+};
+
+/** What a client can say they paid by themselves — each leaves a transaction ID to check. */
+export const CLIENT_SUBMISSION_METHODS = ["bkash", "nagad", "bank_transfer"] as const;
+
+const amountPaisaSchema = z
+  .string()
+  .trim()
+  .transform((value, ctx) => {
+    try {
+      return taakaToPaisa(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message: error instanceof CurrencyFormatError ? error.message : "Enter an amount in taka, for example 500",
+      });
+      return z.NEVER;
+    }
+  })
+  .refine((value) => value > 0, "Enter an amount greater than zero");
+
+/**
+ * A client telling the practice they paid. The transaction ID is required — it
+ * is the only thing staff can check a statement against.
+ */
+export const clientPaymentSubmissionSchema = z.object({
+  amountPaisa: amountPaisaSchema,
+  method: z.enum(CLIENT_SUBMISSION_METHODS, "Choose how you paid"),
+  referenceNumber: z
+    .string()
+    .trim()
+    .min(4, "Enter the transaction ID from your receipt")
+    .max(100, "Keep the transaction ID under 100 characters"),
+});
+
+export type ClientPaymentSubmissionInput = z.infer<typeof clientPaymentSubmissionSchema>;
+
+/** Rejecting a submitted payment always says why — the client reads it. */
+export const rejectPaymentSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(1, "Say why this payment could not be verified")
+    .max(500, "Keep the reason under 500 characters"),
+});

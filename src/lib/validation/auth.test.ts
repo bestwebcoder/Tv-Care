@@ -1,20 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clientPasswordSchema,
+  completeProfileSchema,
+  credentialsFor,
+  identifierSchema,
+  isClientOnly,
   loginSchema,
   normalizePhone,
   passwordSchema,
+  passwordSchemaFor,
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation/auth";
-
-const validRegistration = {
-  fullName: "Rehana Khatun",
-  email: "Rehana@Example.com",
-  phone: "01712345678",
-  password: "Test-Password-123",
-  confirmPassword: "Test-Password-123",
-};
 
 describe("normalizePhone", () => {
   it.each([
@@ -27,55 +25,80 @@ describe("normalizePhone", () => {
   });
 });
 
-describe("registerSchema", () => {
-  it("accepts a valid registration and normalises it", () => {
-    const result = registerSchema.parse(validRegistration);
+describe("identifierSchema", () => {
+  it("reads an email, lowercased", () => {
+    expect(identifierSchema.parse("Rehana@Example.com")).toEqual({ kind: "email", email: "rehana@example.com" });
+  });
 
-    expect(result.phone).toBe("+8801712345678");
-    // Stored lowercase so one person cannot hold two accounts differing by case.
-    expect(result.email).toBe("rehana@example.com");
+  it("reads a Bangladesh mobile number, normalised", () => {
+    expect(identifierSchema.parse("017 1234-5678")).toEqual({ kind: "phone", phone: "+8801712345678" });
   });
 
   it.each([
-    ["0171234567", "too short"],
-    ["01112345678", "invalid operator prefix"],
-    ["+15551234567", "not a Bangladesh number"],
-  ])("rejects %s (%s)", (phone) => {
-    const result = registerSchema.safeParse({ ...validRegistration, phone });
-    expect(result.success).toBe(false);
+    ["rehana@", "a broken email"],
+    ["0171234567", "a number one digit short"],
+    ["01112345678", "an invalid operator prefix"],
+    ["+15551234567", "a number from elsewhere"],
+    ["", "nothing"],
+  ])("rejects %s (%s)", (value) => {
+    expect(identifierSchema.safeParse(value).success).toBe(false);
+  });
+});
+
+describe("phone sign-in identity", () => {
+  it("maps every spelling of one number to the same sign-in address", () => {
+    const expected = { email: "8801712345678@phone.tvcare.invalid", password: "482913" };
+    expect(credentialsFor({ kind: "phone", phone: "+8801712345678" }, "482913")).toEqual(expected);
+    expect(credentialsFor({ kind: "phone", phone: "01712345678" }, "482913")).toEqual(expected);
   });
 
-  it("rejects mismatched passwords against the confirm field", () => {
-    const result = registerSchema.safeParse({
-      ...validRegistration,
-      confirmPassword: "Test-Password-124",
-    });
+  it("refuses the reserved domain typed as an email", () => {
+    expect(identifierSchema.safeParse("8801712345678@phone.tvcare.invalid").success).toBe(false);
+  });
+});
 
+describe("registerSchema", () => {
+  it("accepts an email and a 6-digit PIN", () => {
+    const result = registerSchema.parse({ identifier: "a@b.com", password: "482913", confirmPassword: "482913" });
+    expect(result.identifier).toEqual({ kind: "email", email: "a@b.com" });
+  });
+
+  it("accepts a mobile number and a password", () => {
+    expect(
+      registerSchema.safeParse({ identifier: "01712345678", password: "sunflower", confirmPassword: "sunflower" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a mismatch against the confirm field", () => {
+    const result = registerSchema.safeParse({ identifier: "a@b.com", password: "482913", confirmPassword: "482914" });
     expect(result.success).toBe(false);
     expect(result.error?.issues[0].path).toEqual(["confirmPassword"]);
   });
 });
 
-describe("registration holds the same password policy as every other role", () => {
-  // The 6-digit PIN registration used to accept is gone. These are the exact
-  // values that rule allowed, kept as tests so it cannot quietly come back.
+describe("clientPasswordSchema", () => {
   it.each([
     ["482913", "a 6-digit PIN"],
-    ["12345", "shorter still"],
-    ["alllowercase123", "no uppercase letter"],
-  ])("rejects %s (%s)", (password) => {
-    const result = registerSchema.safeParse({
-      ...validRegistration,
-      password,
-      confirmPassword: password,
-    });
+    ["sunflower", "8+ characters"],
+    ["Test-Password-123", "a strong password"],
+  ])("accepts %s (%s)", (password) => {
+    expect(clientPasswordSchema.safeParse(password).success).toBe(true);
+  });
 
-    expect(result.success).toBe(false);
+  it.each([
+    ["12345", "a 5-digit PIN"],
+    ["1234567", "7 digits — neither a PIN nor a password"],
+    ["12345678", "8 digits — a longer PIN is not a password"],
+    ["abcdef", "6 letters"],
+    ["short1", "under 8 characters"],
+  ])("rejects %s (%s)", (password) => {
+    expect(clientPasswordSchema.safeParse(password).success).toBe(false);
   });
 });
 
-describe("passwordSchema mirrors the Supabase auth policy", () => {
+describe("staff keep the strong password rule", () => {
   it.each([
+    ["482913", "a PIN"],
     ["Short-1a", "fewer than 10 characters"],
     ["alllowercase123", "no uppercase letter"],
     ["ALLUPPERCASE123", "no lowercase letter"],
@@ -87,16 +110,50 @@ describe("passwordSchema mirrors the Supabase auth policy", () => {
   it("accepts a password meeting every requirement", () => {
     expect(passwordSchema.safeParse("Test-Password-123").success).toBe(true);
   });
+
+  it("applies the client rule only to someone who is only a client", () => {
+    expect(isClientOnly(["client"])).toBe(true);
+    expect(isClientOnly(["client", "doctor"])).toBe(false);
+    expect(isClientOnly([])).toBe(false);
+    expect(passwordSchemaFor(["client"]).safeParse("482913").success).toBe(true);
+    expect(passwordSchemaFor(["client", "doctor"]).safeParse("482913").success).toBe(false);
+    expect(passwordSchemaFor(["admin"]).safeParse("482913").success).toBe(false);
+  });
 });
 
 describe("loginSchema", () => {
-  it("does not impose the password policy on existing accounts", () => {
-    // A password set before the policy tightened must still be able to sign in.
-    expect(loginSchema.safeParse({ email: "a@b.com", password: "old" }).success).toBe(true);
+  it("does not impose any password policy on existing accounts", () => {
+    expect(loginSchema.safeParse({ identifier: "a@b.com", password: "old" }).success).toBe(true);
   });
 
   it("still requires a password", () => {
-    expect(loginSchema.safeParse({ email: "a@b.com", password: "" }).success).toBe(false);
+    expect(loginSchema.safeParse({ identifier: "01712345678", password: "" }).success).toBe(false);
+  });
+});
+
+describe("completeProfileSchema", () => {
+  it("accepts a name and phone, with no alternate", () => {
+    expect(completeProfileSchema.parse({ fullName: "Rehana Khatun", phone: "01712345678", alternatePhone: "" })).toEqual({
+      fullName: "Rehana Khatun",
+      phone: "+8801712345678",
+      alternatePhone: null,
+    });
+  });
+
+  it("refuses the same number twice", () => {
+    const result = completeProfileSchema.safeParse({
+      fullName: "Rehana Khatun",
+      phone: "01712345678",
+      alternatePhone: "+8801712345678",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0].path).toEqual(["alternatePhone"]);
+  });
+
+  it("validates the alternate number when one is given", () => {
+    expect(
+      completeProfileSchema.safeParse({ fullName: "Rehana Khatun", phone: "01712345678", alternatePhone: "123" }).success,
+    ).toBe(false);
   });
 });
 

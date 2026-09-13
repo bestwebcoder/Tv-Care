@@ -8,8 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { getAppointment } from "@/features/appointments/queries";
 import { requireRole } from "@/features/auth/session";
 import { listDewormingForAppointment } from "@/features/deworming/queries";
+import { PARASITE_TYPES } from "@/lib/parasite-type";
 
-export const metadata: Metadata = { title: "Deworming · TV Care" };
+export const metadata: Metadata = { title: "Parasite treatment · TV Care" };
 
 export default async function AppointmentDewormingPage({
   params,
@@ -41,10 +42,20 @@ export default async function AppointmentDewormingPage({
             Back to appointment
           </Link>
         </p>
-        <h1>Deworming — {appointment.petName}</h1>
+        <h1>Parasite treatment — {appointment.petName}</h1>
       </div>
 
-      <DewormingList appointmentId={appointmentId} petId={appointment.petId} doctorId={appointment.doctorId} records={records} canEdit />
+      {PARASITE_TYPES.map((parasiteType) => (
+        <DewormingList
+          key={parasiteType}
+          appointmentId={appointmentId}
+          petId={appointment.petId}
+          doctorId={appointment.doctorId}
+          parasiteType={parasiteType}
+          records={records}
+          canEdit
+        />
+      ))}
     </div>
   );
 }

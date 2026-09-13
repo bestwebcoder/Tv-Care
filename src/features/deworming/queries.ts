@@ -1,4 +1,5 @@
 import type { DewormingInterval } from "@/lib/deworming-interval";
+import type { ParasiteType } from "@/lib/parasite-type";
 import { createClient } from "@/lib/supabase/server";
 import { formatWeight } from "@/lib/units";
 
@@ -12,6 +13,7 @@ export type DewormingRecord = {
   appointmentId: string;
   petId: string;
   petName: string;
+  parasiteType: ParasiteType;
   product: string;
   activeIngredient: string | null;
   dose: string | null;
@@ -26,7 +28,7 @@ export type DewormingRecord = {
 };
 
 const DEWORMING_COLUMNS = `
-  id, appointment_id, pet_id, product, active_ingredient, dose, route, weight_grams,
+  id, appointment_id, pet_id, parasite_type, product, active_ingredient, dose, route, weight_grams,
   date_administered, interval, custom_interval_days, next_due_date, notes,
   pet:pets (name)
 `;
@@ -45,6 +47,7 @@ function toRecord(row: any): DewormingRecord {
     appointmentId: row.appointment_id,
     petId: row.pet_id,
     petName: pet?.name ?? "Unknown patient",
+    parasiteType: row.parasite_type,
     product: row.product,
     activeIngredient: row.active_ingredient,
     dose: row.dose,
@@ -100,11 +103,12 @@ export async function listDewormingForPet(petId: string): Promise<Result<Dewormi
 
 export type PetDewormingStatus = {
   petId: string;
+  parasiteType: ParasiteType;
   product: string;
   nextDueDate: string;
 };
 
-/** The most recently administered deworming per pet — feeds PetCard and worklists. */
+/** The most recent treatment per pet, per parasite type — feeds PetCard and the client home. */
 export async function listPetDewormingStatuses(petIds: string[]): Promise<Result<PetDewormingStatus[]>> {
   if (petIds.length === 0) return { status: "ok", data: [] };
 
@@ -112,7 +116,7 @@ export async function listPetDewormingStatuses(petIds: string[]): Promise<Result
 
   const { data, error } = await supabase
     .from("pet_deworming_status")
-    .select("pet_id, product, next_due_date")
+    .select("pet_id, parasite_type, product, next_due_date")
     .in("pet_id", petIds);
 
   if (error) {
@@ -124,6 +128,7 @@ export async function listPetDewormingStatuses(petIds: string[]): Promise<Result
     status: "ok",
     data: (data ?? []).map((row) => ({
       petId: row.pet_id,
+      parasiteType: row.parasite_type,
       product: row.product,
       nextDueDate: row.next_due_date,
     })),
@@ -133,6 +138,7 @@ export async function listPetDewormingStatuses(petIds: string[]): Promise<Result
 export type PetDueDeworming = {
   petId: string;
   petName: string;
+  parasiteType: ParasiteType;
   product: string;
   nextDueDate: string;
 };
@@ -155,7 +161,7 @@ export async function listPracticeDewormingStatuses(): Promise<Result<PetDueDewo
 
   const { data, error } = await supabase
     .from("pet_deworming_status")
-    .select("pet_id, product, next_due_date")
+    .select("pet_id, parasite_type, product, next_due_date")
     .not("next_due_date", "is", null)
     .lte("next_due_date", cutoff.toISOString().slice(0, 10));
 
@@ -182,8 +188,20 @@ export async function listPracticeDewormingStatuses(): Promise<Result<PetDueDewo
     data: rows.map((row) => ({
       petId: row.pet_id,
       petName: nameById.get(row.pet_id) ?? "Unknown patient",
+      parasiteType: row.parasite_type,
       product: row.product,
       nextDueDate: row.next_due_date,
     })),
   };
+}
+
+/** A pet's latest status of each type, keyed for a card: one lookup per pet, not per row. */
+export function dewormingStatusesByPet<T extends { petId: string; parasiteType: ParasiteType }>(
+  rows: T[],
+): Map<string, Partial<Record<ParasiteType, T>>> {
+  const byPet = new Map<string, Partial<Record<ParasiteType, T>>>();
+  for (const row of rows) {
+    byPet.set(row.petId, { ...byPet.get(row.petId), [row.parasiteType]: row });
+  }
+  return byPet;
 }

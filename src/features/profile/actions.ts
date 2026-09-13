@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { requireRole, requireUser } from "@/features/auth/session";
 import { describeAvatarProblem, readAvatar, uploadAvatar } from "@/features/profile/photo";
@@ -9,11 +10,13 @@ import { publicEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ownClientProfileSchema, ownClientProfileToRow } from "@/lib/validation/client";
+import { completeProfileSchema, passwordSchemaFor, phoneLoginEmail } from "@/lib/validation/auth";
 import {
   adminChangeEmailSchema,
   adminSetPasswordSchema,
   adminUpdateIdentitySchema,
   changePasswordSchema,
+  clientChangePasswordSchema,
 } from "@/lib/validation/profile";
 
 function avatarPublicUrl(path: string): string {
@@ -87,9 +90,20 @@ export async function changeOwnPasswordAction(_previous: FormState, formData: Fo
   });
   if (!parsed.success) return invalid(parsed.error);
 
+  // The auth server only enforces the client floor now; staff are held to the
+  // staff rule here (see passwordSchema).
+  const policy = passwordSchemaFor(user.roles).safeParse(parsed.data.newPassword);
+  if (!policy.success) {
+    return {
+      status: "error",
+      message: "Please correct the highlighted fields.",
+      fieldErrors: { newPassword: policy.error.issues.map((issue) => issue.message) },
+    };
+  }
+
   const supabase = await createClient();
   const { error: verifyError } = await supabase.auth.signInWithPassword({
-    email: user.email,
+    ...ownSignInIdentifier(user),
     password: parsed.data.currentPassword,
   });
 
@@ -288,7 +302,7 @@ export async function updateOwnClientProfileAction(
     (field) => text(formData, field) !== undefined,
   );
   const passwordParsed = wantsPasswordChange
-    ? changePasswordSchema.safeParse({
+    ? clientChangePasswordSchema.safeParse({
         currentPassword: formData.get("currentPassword"),
         newPassword: formData.get("newPassword"),
         confirmPassword: formData.get("confirmPassword"),
@@ -314,7 +328,7 @@ export async function updateOwnClientProfileAction(
     // verified by signing in with it — before anything is written, so a wrong
     // one costs nothing but the message.
     const { error: verifyError } = await supabase.auth.signInWithPassword({
-      email: user.email,
+      ...ownSignInIdentifier(user),
       password: newPassword.currentPassword,
     });
 
@@ -351,6 +365,10 @@ export async function updateOwnClientProfileAction(
   }
 
   const warnings: string[] = [];
+
+  if (!(await syncPhoneSignIn(user, parsed.data.phone))) {
+    warnings.push("You still sign in with your previous mobile number, because another account uses the new one.");
+  }
 
   if (photo) {
     const uploaded = await uploadAvatar(user.id, photo);
@@ -394,4 +412,103 @@ export async function updateOwnClientProfileAction(
     message: changedPassword ? "Changes saved. Your password has been changed." : "Changes saved.",
     warning: warnings.length > 0 ? `${warnings.join(" ")} Everything else was saved.` : undefined,
   };
+}
+
+/**
+ * What a signed-in person proves their current password against: their email,
+ * or — for a client who registered with a mobile number only — their phone.
+ */
+function ownSignInIdentifier(user: { email: string; phone: string | null }) {
+  return { email: user.email || phoneLoginEmail(user.phone ?? "") };
+}
+
+/**
+ * A phone-registered client signs in with their number. When they change it,
+ * their sign-in identity has to follow, or the new number would not work at the
+ * sign-in form and the old one would. The one service-role call here: an
+ * account's own email is not something a session may set without a
+ * confirmation email, and the address is undeliverable by design.
+ *
+ * Returns false when another account already signs in with that number.
+ */
+async function syncPhoneSignIn(user: { id: string; email: string }, phone: string): Promise<boolean> {
+  if (user.email) return true; // Signs in with a real email; the phone is contact only.
+
+  const { error } = await createServiceClient().auth.admin.updateUserById(user.id, {
+    email: phoneLoginEmail(phone),
+    email_confirm: true,
+  });
+
+  if (error) {
+    console.error("[profile] phone sign-in sync failed", error);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The first screen a self-registered client sees: the name and numbers
+ * registration no longer asks for. Stamps profile_completed_at, which is what
+ * lets them past the /client gate.
+ *
+ * Located by user_id = auth.uid(), never by an id from the browser.
+ */
+export async function completeOwnProfileAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const user = await requireRole("client");
+
+  const parsed = completeProfileSchema.safeParse({
+    fullName: text(formData, "fullName") ?? "",
+    phone: text(formData, "phone") ?? "",
+    alternatePhone: text(formData, "alternatePhone") ?? "",
+  });
+  if (!parsed.success) return invalid(parsed.error);
+
+  if (!(await syncPhoneSignIn(user, parsed.data.phone))) {
+    return {
+      status: "error",
+      message: "Another account already signs in with this mobile number.",
+      fieldErrors: { phone: ["Already in use"] },
+    };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .update({
+      full_name: parsed.data.fullName,
+      phone: parsed.data.phone,
+      alternate_phone: parsed.data.alternatePhone,
+      profile_completed_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") {
+      return {
+        status: "error",
+        message: "This mobile number is already on file with the clinic. Use another, or contact The Traveling Vet.",
+        fieldErrors: { phone: ["Already in use"] },
+      };
+    }
+    return failure("profile", error, "We could not save your details just now. Please try again.");
+  }
+
+  if (!data) {
+    return { status: "error", message: "We could not find your client record. Please contact the clinic." };
+  }
+
+  // The account's own profile carries the name shown in the sidebar. The
+  // client record above is what the practice relies on, so a failure here is
+  // logged rather than undoing a completed profile.
+  const { error: userError } = await supabase
+    .from("users")
+    .update({ full_name: parsed.data.fullName, phone: parsed.data.phone })
+    .eq("id", user.id);
+  if (userError) console.error("[profile] account name sync failed", userError);
+
+  revalidatePath("/", "layout");
+  redirect("/client");
 }

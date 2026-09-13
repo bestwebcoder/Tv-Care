@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { passwordSchema } from "@/lib/validation/auth";
+import { clientPasswordSchema, passwordSchema } from "@/lib/validation/auth";
 import { emailSchema, fullNameSchema, phoneSchema, uuidSchema } from "@/lib/validation/common";
 
 /**
@@ -22,6 +22,21 @@ export const changePasswordSchema = z
   });
 
 export type ChangePasswordInput = z.input<typeof changePasswordSchema>;
+
+/**
+ * A client changing their own password or PIN from their profile — the same
+ * shape, held to the client rule a pet owner registered under.
+ */
+export const clientChangePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password or PIN"),
+    newPassword: clientPasswordSchema,
+    confirmPassword: z.string(),
+  })
+  .refine((values) => values.newPassword === values.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 /**
  * An admin setting a password directly for someone they administer — no

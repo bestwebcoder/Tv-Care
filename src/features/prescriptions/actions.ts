@@ -3,15 +3,17 @@
 import { revalidatePath } from "next/cache";
 
 import { getOwnDoctorRecord } from "@/features/doctors/queries";
-import { getPrescription } from "@/features/prescriptions/queries";
+import { getPrescription, resolveVisitWeightGrams } from "@/features/prescriptions/queries";
 import { renderPrescriptionPdf } from "@/lib/prescription-pdf";
 import { failure, invalid, text, type FormState } from "@/lib/forms";
 import { createClient } from "@/lib/supabase/server";
 import {
+  itemsMissingDirections,
   prescriptionItemSchema,
   prescriptionItemToRow,
   prescriptionSchema,
   prescriptionToRow,
+  prescriptionWeightSchema,
 } from "@/lib/validation/prescription";
 
 /**
@@ -80,6 +82,8 @@ export async function createPrescriptionAction(_previous: FormState, formData: F
       pet_id: appointment.pet_id,
       organization_id: appointment.organization_id,
       doctor_id: doctor.data.id,
+      // Prefilled from the visit, then the vet's own to change on the form.
+      weight_grams: await resolveVisitWeightGrams(appointmentId, appointment.pet_id),
     })
     .select("id")
     .single();
@@ -94,12 +98,18 @@ function readItemForm(formData: FormData) {
   return {
     medicationId: text(formData, "medicationId") ?? null,
     drugName: text(formData, "drugName") ?? "",
+    genericName: text(formData, "genericName") ?? "",
     strength: text(formData, "strength") ?? "",
     formulation: text(formData, "formulation") ?? "",
     dosePerKg: text(formData, "dosePerKg") ?? "",
     doseUnit: text(formData, "doseUnit") ?? "",
     computedDose: text(formData, "computedDose") ?? "",
+    doseForm: text(formData, "doseForm") ?? "",
+    concentrationMgPerUnit: text(formData, "concentrationMgPerUnit") ?? "",
+    doseAmount: text(formData, "doseAmount") ?? "",
     route: text(formData, "route") ?? "",
+    frequencyPerDay: text(formData, "frequencyPerDay") ?? "",
+    durationDays: text(formData, "durationDays") ?? "",
     frequency: text(formData, "frequency") ?? "",
     duration: text(formData, "duration") ?? "",
     quantity: text(formData, "quantity") ?? "",
@@ -234,6 +244,20 @@ export async function savePrescriptionAction(_previous: FormState, formData: For
     return { status: "error", message: "Add at least one medication before finalizing." };
   }
 
+  // The invalid-prescription state: every item carries the standard directions
+  // before it can be signed, so an owner never reads a half-written one.
+  const incomplete = itemsMissingDirections(current.data.items);
+  if (incomplete.length > 0) {
+    return {
+      status: "error",
+      message: `Complete the directions for ${incomplete.join(", ")} — amount, mL/tablet/capsule, route, times a day and days — before finalizing.`,
+    };
+  }
+
+  if (current.data.weightGrams === null) {
+    return { status: "error", message: "Record the patient's weight on this prescription before finalizing." };
+  }
+
   const pdfBytes = await renderPrescriptionPdf(current.data, supabase);
   const pdfPath = `${current.data.petId}/${prescriptionId}.pdf`;
 
@@ -280,4 +304,36 @@ export async function revisePrescriptionAction(_previous: FormState, formData: F
   if (created) revalidatePrescription(created.pet_id, created.appointment_id);
 
   return { status: "success", message: "A new version has been started.", id: newId };
+}
+
+/** Saves the weight this prescription is dosed against (draft only — a finalized row refuses the update). */
+export async function savePrescriptionWeightAction(_previous: FormState, formData: FormData): Promise<FormState> {
+  const prescriptionId = text(formData, "prescriptionId");
+  const appointmentId = text(formData, "appointmentId");
+  const petId = text(formData, "petId");
+  if (!prescriptionId || !appointmentId || !petId) {
+    return { status: "error", message: "We could not tell which prescription this weight is for." };
+  }
+
+  const parsed = prescriptionWeightSchema.safeParse({ weightKg: text(formData, "weightKg") ?? "" });
+  if (!parsed.success) return invalid(parsed.error);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("prescriptions")
+    .update({ weight_grams: parsed.data.weightKg })
+    .eq("id", prescriptionId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    if (error.message?.includes("finalized")) {
+      return { status: "error", message: "This prescription has already been finalized. Revise it to change the weight." };
+    }
+    return failure("prescriptions", error, "We could not save the weight just now. Please try again.");
+  }
+  if (!data) return { status: "error", message: "You do not have access to this prescription." };
+
+  revalidatePrescription(petId, appointmentId);
+  return { status: "success", message: "Weight saved." };
 }

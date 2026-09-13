@@ -2,9 +2,10 @@ import { DateRangeFilter } from "@/components/reports/date-range-filter";
 import { ExportButtons } from "@/components/reports/export-buttons";
 import { ReportBarChart } from "@/components/reports/report-bar-chart";
 import { ReportTable } from "@/components/reports/report-table";
+import { VetRevenueTable } from "@/components/reports/vet-revenue";
 import { ErrorState } from "@/components/states/error-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getRevenueByDoctor, getRevenueByService, getRevenueSeries, getRevenueTotals } from "@/features/reports/queries";
+import { getRevenueByService, getRevenueSeries, getRevenueTotals } from "@/features/reports/queries";
 import { formatCurrency } from "@/lib/currency";
 import { readReportPage, singleValued, type DateRange } from "@/lib/validation/date-range";
 
@@ -21,11 +22,10 @@ export async function FinancialReportView({
   /** Raw params from the page, so each table can read its own page number. */
   searchParams: Record<string, string | string[] | undefined>;
 }) {
-  const [seriesResult, totalsResult, byServiceResult, byDoctorResult] = await Promise.all([
+  const [seriesResult, totalsResult, byServiceResult] = await Promise.all([
     getRevenueSeries(organizationId, range, "day"),
     getRevenueTotals(organizationId, range),
     getRevenueByService(organizationId, range),
-    getRevenueByDoctor(organizationId, range),
   ]);
 
   return (
@@ -34,8 +34,7 @@ export async function FinancialReportView({
 
       {seriesResult.status === "error" ||
       totalsResult.status === "error" ||
-      byServiceResult.status === "error" ||
-      byDoctorResult.status === "error" ? (
+      byServiceResult.status === "error" ? (
         <Card>
           <CardContent>
             <ErrorState title="Financial reports could not be loaded" />
@@ -88,17 +87,14 @@ export async function FinancialReportView({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Revenue by doctor</CardTitle>
+              <CardTitle className="text-base">Revenue by veterinarian</CardTitle>
+              <p className="text-muted-foreground text-sm">
+                Billed, collected and outstanding for each vet&apos;s visits, and what they collected on site. Select a
+                vet for their breakdown.
+              </p>
             </CardHeader>
             <CardContent>
-              <ReportTable
-                columns={["Doctor", "Revenue"]}
-                rows={byDoctorResult.data.map((row) => [row.doctorName, formatCurrency(row.revenuePaisa)])}
-                pageParam="byDoctor"
-                page={readReportPage(searchParams, "byDoctor")}
-                basePath={basePath}
-                searchParams={singleValued(searchParams)}
-              />
+              <VetRevenueTable organizationId={organizationId} range={range} detailBasePath={`${basePath}/vets`} />
             </CardContent>
           </Card>
         </>

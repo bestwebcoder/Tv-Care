@@ -1,5 +1,5 @@
 import { formatCurrency } from "@/lib/currency";
-import type { PaymentInput } from "@/lib/validation/payment";
+import type { PaymentInput, PaymentSource, PaymentStatus } from "@/lib/validation/payment";
 import { createClient } from "@/lib/supabase/server";
 
 /** Payment reads. Insert-only ledger — nothing here ever updates a row. */
@@ -15,6 +15,13 @@ export type Payment = {
   referenceNumber: string | null;
   paidAt: string;
   notes: string | null;
+  status: PaymentStatus;
+  source: PaymentSource;
+  /** "sslcommerz" for an online checkout; "manual" for everything else. */
+  gateway: string;
+  rejectionReason: string | null;
+  verifiedAt: string | null;
+  collectedByDoctorId: string | null;
 };
 
 export type Result<T> = { status: "ok"; data: T } | { status: "error" };
@@ -24,6 +31,7 @@ export type PaginatedResult<T> =
 
 const PAYMENT_COLUMNS = `
   id, invoice_id, amount_paisa, method, reference_number, paid_at, notes,
+  status, source, gateway, rejection_reason, verified_at, collected_by_doctor_id,
   invoice:invoices (invoice_number, client:clients (full_name))
 `;
 
@@ -48,6 +56,12 @@ function toPayment(row: any): Payment {
     referenceNumber: row.reference_number,
     paidAt: row.paid_at,
     notes: row.notes,
+    status: row.status,
+    source: row.source,
+    gateway: row.gateway,
+    rejectionReason: row.rejection_reason,
+    verifiedAt: row.verified_at,
+    collectedByDoctorId: row.collected_by_doctor_id,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -76,6 +90,7 @@ export async function listPaymentsForInvoice(invoiceId: string): Promise<Result<
  */
 export async function listPaymentsForOrg(options: {
   method?: PaymentInput["method"];
+  status?: PaymentStatus;
   from?: string;
   to?: string;
   page?: number;
@@ -87,6 +102,7 @@ export async function listPaymentsForOrg(options: {
 
   let query = supabase.from("payments").select(PAYMENT_COLUMNS, { count: "exact" });
   if (options.method) query = query.eq("method", options.method);
+  if (options.status) query = query.eq("status", options.status);
   if (options.from) query = query.gte("paid_at", options.from);
   if (options.to) query = query.lte("paid_at", `${options.to}T23:59:59.999Z`);
 
@@ -152,4 +168,41 @@ export async function listRefundsForInvoice(invoiceId: string): Promise<Result<R
   }
 
   return { status: "ok", data: (data ?? []).map(toRefund) };
+}
+
+/** Every payment on these invoices, newest first — one round trip for a client's invoice list. */
+export async function listPaymentsForInvoices(invoiceIds: string[]): Promise<Result<Payment[]>> {
+  if (invoiceIds.length === 0) return { status: "ok", data: [] };
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("payments")
+    .select(PAYMENT_COLUMNS)
+    .in("invoice_id", invoiceIds)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[payments] invoices list failed", error);
+    return { status: "error" };
+  }
+
+  return { status: "ok", data: (data ?? []).map(toPayment) };
+}
+
+/** How many payments are waiting for someone with billing access to check. */
+export async function countPendingPayments(): Promise<Result<number>> {
+  const supabase = await createClient();
+
+  const { count, error } = await supabase
+    .from("payments")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending")
+    .eq("source", "client_submission");
+
+  if (error) {
+    console.error("[payments] pending count failed", error);
+    return { status: "error" };
+  }
+
+  return { status: "ok", data: count ?? 0 };
 }

@@ -1,6 +1,7 @@
 import { Document, Image, Page, StyleSheet, Text, View, renderToBuffer } from "@react-pdf/renderer";
 
 import type { PrescriptionDetail } from "@/features/prescriptions/queries";
+import { prescriptionDirections, prescriptionItemLabel } from "@/lib/prescription-directions";
 
 /**
  * The finalized prescription PDF, §5.2/§5.5. A pure function of already-
@@ -29,12 +30,10 @@ const styles = StyleSheet.create({
   table: { borderTopWidth: 1, borderTopColor: "#d8d8c8" },
   tableRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#eeeee0", paddingVertical: 6 },
   tableHeaderRow: { flexDirection: "row", paddingVertical: 4, backgroundColor: "#f2f2e8" },
-  colDrug: { width: "26%", paddingRight: 4 },
+  colDrug: { width: "30%", paddingRight: 4 },
   colDose: { width: "16%", paddingRight: 4 },
-  colRoute: { width: "12%", paddingRight: 4 },
-  colFreq: { width: "14%", paddingRight: 4 },
-  colDuration: { width: "14%", paddingRight: 4 },
-  colQty: { width: "18%" },
+  colDirections: { width: "40%", paddingRight: 4 },
+  colQty: { width: "14%" },
   itemInstructions: { fontSize: 8, color: "#5c5c50", marginTop: 2 },
   headCell: { fontSize: 8, fontFamily: "Helvetica-Bold", color: "#5c5c50" },
   footerGrid: { flexDirection: "row", justifyContent: "space-between", marginTop: 28 },
@@ -119,6 +118,10 @@ export async function renderPrescriptionPdf(prescription: PrescriptionDetail, su
             </Text>
           </View>
           <View style={styles.metaCol}>
+            <Text style={styles.metaLabel}>Weight</Text>
+            <Text style={styles.metaValue}>{prescription.weight ?? "Not recorded"}</Text>
+          </View>
+          <View style={styles.metaCol}>
             <Text style={styles.metaLabel}>Owner</Text>
             <Text style={styles.metaValue}>{prescription.clientName}</Text>
             <Text style={styles.small}>{prescription.clientPhone}</Text>
@@ -130,17 +133,15 @@ export async function renderPrescriptionPdf(prescription: PrescriptionDetail, su
           <View style={styles.tableHeaderRow}>
             <Text style={[styles.headCell, styles.colDrug]}>Drug</Text>
             <Text style={[styles.headCell, styles.colDose]}>Dose</Text>
-            <Text style={[styles.headCell, styles.colRoute]}>Route</Text>
-            <Text style={[styles.headCell, styles.colFreq]}>Frequency</Text>
-            <Text style={[styles.headCell, styles.colDuration]}>Duration</Text>
+            <Text style={[styles.headCell, styles.colDirections]}>Directions</Text>
             <Text style={[styles.headCell, styles.colQty]}>Quantity</Text>
           </View>
           {prescription.items.map((item) => (
             <View style={styles.tableRow} key={item.id} wrap={false}>
               <View style={styles.colDrug}>
-                <Text>{item.drugName}</Text>
-                {item.strength || item.formulation ? (
-                  <Text style={styles.small}>{[item.strength, item.formulation].filter(Boolean).join(" · ")}</Text>
+                <Text>{prescriptionItemLabel(item)}</Text>
+                {item.genericName && item.genericName !== item.drugName ? (
+                  <Text style={styles.small}>Dispensed as {item.drugName}</Text>
                 ) : null}
               </View>
               <Text style={styles.colDose}>
@@ -150,9 +151,10 @@ export async function renderPrescriptionPdf(prescription: PrescriptionDetail, su
                     ? `${item.dosePerKg}${item.doseUnit ?? ""}/kg`
                     : "—"}
               </Text>
-              <Text style={styles.colRoute}>{item.route ?? "—"}</Text>
-              <Text style={styles.colFreq}>{item.frequency ?? "—"}</Text>
-              <Text style={styles.colDuration}>{item.duration ?? "—"}</Text>
+              <Text style={styles.colDirections}>
+                {prescriptionDirections(item) ??
+                  ([item.route, item.frequency, item.duration].filter(Boolean).join(" · ") || "—")}
+              </Text>
               <View style={styles.colQty}>
                 <Text>{item.quantity ?? "—"}</Text>
                 {item.instructions ? <Text style={styles.itemInstructions}>{item.instructions}</Text> : null}

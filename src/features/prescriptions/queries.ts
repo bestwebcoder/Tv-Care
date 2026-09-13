@@ -1,3 +1,4 @@
+import type { DoseForm } from "@/lib/prescription-directions";
 import { formatWeight } from "@/lib/units";
 import { createClient } from "@/lib/supabase/server";
 
@@ -9,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
  */
 
 const ITEM_COLUMNS =
-  "id, medication_id, drug_name, strength, formulation, dose_per_kg, dose_unit, computed_dose, route, frequency, duration, quantity, instructions, sort_order";
+  "id, medication_id, drug_name, generic_name, strength, formulation, dose_per_kg, dose_unit, computed_dose, dose_form, concentration_mg_per_unit, dose_amount, route, frequency, frequency_per_day, duration, duration_days, quantity, instructions, sort_order";
 
 // items embedded directly rather than fetched per-row: a list of N
 // prescriptions is one round trip now, not N+1 — the same embedded-resource
@@ -17,7 +18,7 @@ const ITEM_COLUMNS =
 const PRESCRIPTION_COLUMNS = `
   id, appointment_id, pet_id, organization_id, doctor_id, version, status,
   finalized_at, superseded_at, prescription_number, follow_up_date,
-  instructions, pdf_path, signed_at, created_at, updated_at,
+  instructions, pdf_path, signed_at, weight_grams, created_at, updated_at,
   pet:pets (id, name, species:species_id (name), breed:breeds (name)),
   doctor:doctors (id, registration_number, signature_url, user:user_id (full_name)),
   appointment:appointments (id, starts_at, client:clients (id, full_name, phone)),
@@ -33,14 +34,20 @@ export type PrescriptionItem = {
   id: string;
   medicationId: string | null;
   drugName: string;
+  genericName: string | null;
   strength: string | null;
   formulation: string | null;
   dosePerKg: number | null;
   doseUnit: string | null;
   computedDose: number | null;
+  doseForm: DoseForm | null;
+  concentrationMgPerUnit: number | null;
+  doseAmount: number | null;
   route: string | null;
   frequency: string | null;
+  frequencyPerDay: number | null;
   duration: string | null;
+  durationDays: number | null;
   quantity: string | null;
   instructions: string | null;
   sortOrder: number;
@@ -70,6 +77,9 @@ export type PrescriptionDetail = {
   instructions: string | null;
   pdfPath: string | null;
   signedAt: string | null;
+  /** The weight this prescription was dosed against — null until one is saved. */
+  weightGrams: number | null;
+  weight: string | null;
   createdAt: string;
   items: PrescriptionItem[];
 };
@@ -109,6 +119,8 @@ function toDetail(row: any): PrescriptionDetail {
     instructions: row.instructions,
     pdfPath: row.pdf_path,
     signedAt: row.signed_at,
+    weightGrams: row.weight_grams,
+    weight: formatWeight(row.weight_grams),
     createdAt: row.created_at,
     items,
   };
@@ -119,14 +131,20 @@ function toItem(row: {
   id: string;
   medication_id: string | null;
   drug_name: string;
+  generic_name: string | null;
   strength: string | null;
   formulation: string | null;
   dose_per_kg: number | null;
   dose_unit: string | null;
   computed_dose: number | null;
+  dose_form: DoseForm | null;
+  concentration_mg_per_unit: number | null;
+  dose_amount: number | null;
   route: string | null;
   frequency: string | null;
+  frequency_per_day: number | null;
   duration: string | null;
+  duration_days: number | null;
   quantity: string | null;
   instructions: string | null;
   sort_order: number;
@@ -135,14 +153,20 @@ function toItem(row: {
     id: row.id,
     medicationId: row.medication_id,
     drugName: row.drug_name,
+    genericName: row.generic_name,
     strength: row.strength,
     formulation: row.formulation,
     dosePerKg: row.dose_per_kg,
     doseUnit: row.dose_unit,
     computedDose: row.computed_dose,
+    doseForm: row.dose_form,
+    concentrationMgPerUnit: row.concentration_mg_per_unit,
+    doseAmount: row.dose_amount,
     route: row.route,
     frequency: row.frequency,
+    frequencyPerDay: row.frequency_per_day,
     duration: row.duration,
+    durationDays: row.duration_days,
     quantity: row.quantity,
     instructions: row.instructions,
     sortOrder: row.sort_order,

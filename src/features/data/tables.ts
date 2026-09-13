@@ -123,6 +123,7 @@ export type TableName =
   | "site_page_blocks"
   | "nav_menu_items"
   | "page_section_items"
+  | "training_courses"
   | "organization_hero_images"
   | "audit_logs"
   | "data_exports"
@@ -249,6 +250,7 @@ export const DATA_TABLES: DataTable[] = [
   },
   { name: "nav_menu_items", label: "Website menu", group: "website", scope: { kind: "organization" } },
   { name: "page_section_items", label: "Page sections", group: "website", scope: { kind: "organization" } },
+  { name: "training_courses", label: "Training courses", group: "website", scope: { kind: "organization" } },
   { name: "organization_hero_images", label: "Hero images", group: "website", scope: { kind: "organization" } },
 
   // -- History -------------------------------------------------------------
@@ -334,6 +336,7 @@ export const AUDITED_TABLES = [
   "payments",
   "refunds",
   "notifications",
+  "training_courses",
   "data_exports",
   "data_imports",
   "auth.sessions",

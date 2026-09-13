@@ -15,7 +15,6 @@ import { getAppointment } from "@/features/appointments/queries";
 import { requireRole } from "@/features/auth/session";
 import { getOwnDoctorRecord } from "@/features/doctors/queries";
 import {
-  formattedVisitWeight,
   getCurrentPrescription,
   getPrescription,
   listMedications,
@@ -148,8 +147,8 @@ export default async function PrescriptionPage({
             petId={appointment.petId}
             items={currentResult.data.items}
             medications={await listMedications()}
-            visitWeightGrams={await resolveVisitWeightGrams(appointmentId, appointment.petId)}
-            visitWeightDisplay={await formattedVisitWeight(appointmentId, appointment.petId)}
+            weightGrams={currentResult.data.weightGrams ?? (await resolveVisitWeightGrams(appointmentId, appointment.petId))}
+            weightSaved={currentResult.data.weightGrams !== null}
             canEdit
           />
           <PrescriptionForm

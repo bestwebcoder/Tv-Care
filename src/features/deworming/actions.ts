@@ -13,6 +13,7 @@ import { dewormingEntrySchema, dewormingEntryToRow } from "@/lib/validation/dewo
 
 function readDewormingForm(formData: FormData) {
   return {
+    parasiteType: text(formData, "parasiteType") ?? "",
     product: text(formData, "product") ?? "",
     activeIngredient: text(formData, "activeIngredient") ?? "",
     dose: text(formData, "dose") ?? "",

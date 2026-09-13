@@ -2,7 +2,6 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { MailCheck } from "lucide-react";
 
 import { Field } from "@/components/form/field";
 import { PasswordField } from "@/components/form/password-field";
@@ -13,105 +12,65 @@ import { registerAction, type FormState } from "@/features/auth/actions";
 
 const initialState: FormState = { status: "idle" };
 
+/**
+ * Two things to type and a PIN to repeat. A successful registration signs the
+ * client in and redirects to /client/complete-profile, so the only success
+ * state rendered here is the fallback for an auth server that still requires
+ * confirmation (see registerAction).
+ */
 export function RegisterForm() {
   const [state, formAction] = useActionState(registerAction, initialState);
   const fieldErrors = state.status === "error" ? state.fieldErrors : undefined;
-
-  // Registration no longer ends in a session — the account cannot sign in
-  // until the emailed link is clicked — so there is nothing to redirect into.
-  // The form is replaced rather than left on screen with a message above it:
-  // every field is filled in and submitting again would only resend.
-  if (state.status === "success") {
-    return (
-      <Card>
-        <CardHeader>
-          <div
-            className="bg-primary/10 text-primary mb-2 flex size-11 items-center justify-center rounded-full"
-            aria-hidden
-          >
-            <MailCheck className="size-5" />
-          </div>
-          <CardTitle>Confirm your email</CardTitle>
-          <CardDescription>One step left before you can sign in.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          <p className="text-muted-foreground text-sm" role="status">
-            {state.message}
-          </p>
-          <p className="text-muted-foreground text-sm">
-            The link opens your dashboard and signs you in. If it has not arrived in a few
-            minutes, check your spam folder.
-          </p>
-          <Link
-            href="/login"
-            className="text-foreground text-sm font-medium underline underline-offset-4"
-          >
-            Back to sign in
-          </Link>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Create your account</CardTitle>
-        <CardDescription>For pet owners of The Traveling Vet.</CardDescription>
+        <CardDescription>For pet owners of The Traveling Vet. It takes under a minute.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="grid gap-5" noValidate>
-          <FormAlert state={state} />
+        {state.status === "success" ? (
+          <div className="grid gap-4">
+            <p className="text-muted-foreground text-sm" role="status">
+              {state.message}
+            </p>
+            <Link href="/login" className="text-foreground text-sm font-medium underline underline-offset-4">
+              Go to sign in
+            </Link>
+          </div>
+        ) : (
+          <form action={formAction} className="grid gap-5" noValidate>
+            <FormAlert state={state} />
 
-          <Field
-            label="Full name"
-            name="fullName"
-            autoComplete="name"
-            required
-            errors={fieldErrors?.fullName}
-          />
+            <Field
+              label="Email or mobile number"
+              name="identifier"
+              autoComplete="username"
+              required
+              hint="For example you@example.com or 01712345678"
+              errors={fieldErrors?.identifier}
+            />
 
-          <Field
-            label="Email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            required
-            hint="We send a confirmation link here before your account can be used."
-            errors={fieldErrors?.email}
-          />
+            <PasswordField
+              label="PIN or password"
+              name="password"
+              autoComplete="new-password"
+              required
+              hint="A 6-digit PIN, or a password of at least 8 characters."
+              errors={fieldErrors?.password}
+            />
 
-          <Field
-            label="Mobile number"
-            name="phone"
-            type="tel"
-            autoComplete="tel"
-            inputMode="tel"
-            required
-            hint="For example 01712345678"
-            errors={fieldErrors?.phone}
-          />
+            <PasswordField
+              label="Confirm PIN or password"
+              name="confirmPassword"
+              autoComplete="new-password"
+              required
+              errors={fieldErrors?.confirmPassword}
+            />
 
-          <PasswordField
-            label="Password"
-            name="password"
-            autoComplete="new-password"
-            required
-            hint="At least 10 characters, with an uppercase letter, a lowercase letter and a number."
-            errors={fieldErrors?.password}
-          />
-
-          <PasswordField
-            label="Confirm password"
-            name="confirmPassword"
-            autoComplete="new-password"
-            required
-            errors={fieldErrors?.confirmPassword}
-          />
-
-          <SubmitButton pendingLabel="Creating your account…">Create account</SubmitButton>
-        </form>
+            <SubmitButton pendingLabel="Creating your account…">Create account</SubmitButton>
+          </form>
+        )}
 
         <p className="text-muted-foreground mt-6 text-center text-sm">
           Already have an account?{" "}
