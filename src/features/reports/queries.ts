@@ -275,3 +275,86 @@ export async function getFrequentPatients(
     })),
   };
 }
+
+/**
+ * Per-veterinarian revenue — 20261013000600_vet_revenue_reports.sql.
+ * `doctorId` omitted means every vet (report viewers only); given, just that
+ * vet, which a doctor may always ask about themselves.
+ */
+export type VetRevenue = {
+  doctorId: string;
+  doctorName: string;
+  completedAppointments: number;
+  clinicVisits: number;
+  homeVisits: number;
+  billedPaisa: number;
+  collectedPaisa: number;
+  collectedOnSitePaisa: number;
+  outstandingPaisa: number;
+};
+
+export async function getVetRevenue(
+  organizationId: string,
+  range: DateRange,
+  doctorId?: string,
+): Promise<Result<VetRevenue[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("report_vet_revenue", {
+    p_organization_id: organizationId,
+    p_from: range.from,
+    p_to: range.to,
+    p_doctor_id: doctorId ?? null,
+  });
+
+  if (error) {
+    console.error("[reports] vet revenue failed", error);
+    return { status: "error" };
+  }
+
+  /* eslint-disable @typescript-eslint/no-explicit-any -- rpc() has no generated return type here */
+  return {
+    status: "ok",
+    data: (data ?? []).map((row: any) => ({
+      doctorId: row.doctor_id,
+      doctorName: row.doctor_name,
+      completedAppointments: Number(row.completed_appointments),
+      clinicVisits: Number(row.clinic_visits),
+      homeVisits: Number(row.home_visits),
+      billedPaisa: Number(row.billed_paisa),
+      collectedPaisa: Number(row.collected_paisa),
+      collectedOnSitePaisa: Number(row.collected_on_site_paisa),
+      outstandingPaisa: Number(row.outstanding_paisa),
+    })),
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+export async function getVetRevenueByService(
+  organizationId: string,
+  doctorId: string,
+  range: DateRange,
+): Promise<Result<RevenueByService[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("report_vet_revenue_by_service", {
+    p_organization_id: organizationId,
+    p_doctor_id: doctorId,
+    p_from: range.from,
+    p_to: range.to,
+  });
+
+  if (error) {
+    console.error("[reports] vet revenue by service failed", error);
+    return { status: "error" };
+  }
+
+  return {
+    status: "ok",
+    data: (data ?? []).map((row: { service_name: string; revenue_paisa: number; quantity: number }) => ({
+      serviceName: row.service_name,
+      revenuePaisa: Number(row.revenue_paisa),
+      quantity: Number(row.quantity),
+    })),
+  };
+}

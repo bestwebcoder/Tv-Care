@@ -12,6 +12,7 @@ import { getOwnClientRecord } from "@/features/clients/queries";
 import { listPets } from "@/features/pets/queries";
 import { listDewormingForPet } from "@/features/deworming/queries";
 import { dueStatusBadgeVariant, getDueInfo } from "@/lib/due-window";
+import { PARASITE_TYPE_SHORT_LABELS } from "@/lib/parasite-type";
 
 export const metadata: Metadata = { title: "Deworming · TV Care" };
 
@@ -76,7 +77,7 @@ export default async function ClientDewormingPage({ searchParams }: PageProps<"/
       {records.length === 0 ? (
         <Card>
           <CardContent className="grid gap-4">
-            <EmptyState icon={Worm} title="No deworming yet" description="Deworming recorded for your pets will appear here." />
+            <EmptyState icon={Worm} title="No deworming yet" description="Deworming and tick & flea treatments recorded for your pets will appear here." />
           </CardContent>
         </Card>
       ) : (
@@ -88,7 +89,7 @@ export default async function ClientDewormingPage({ searchParams }: PageProps<"/
                 <CardContent className="grid gap-1">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-medium">
-                      {pet.name} · {record.product}
+                      {pet.name} · {PARASITE_TYPE_SHORT_LABELS[record.parasiteType]} · {record.product}
                     </p>
                     <Badge variant={dueStatusBadgeVariant(due.status)}>{due.label}</Badge>
                   </div>

@@ -27,20 +27,28 @@ const BASE_PRESCRIPTION: PrescriptionDetail = {
   instructions: "Give with food.",
   pdfPath: null,
   signedAt: "2026-08-01T09:30:00.000Z",
+  weightGrams: 22000,
+  weight: "22 kg",
   createdAt: "2026-08-01T09:15:00.000Z",
   items: [
     {
       id: "66666666-6666-6666-6666-666666666666",
       medicationId: null,
       drugName: "Meloxicam",
+      genericName: null,
       strength: "1.5 mg/mL",
       formulation: "Oral suspension",
       dosePerKg: 0.1,
       doseUnit: "mg",
       computedDose: 2.2,
+      doseForm: null,
+      concentrationMgPerUnit: null,
+      doseAmount: null,
       route: "PO",
       frequency: "SID",
+      frequencyPerDay: null,
       duration: "5 days",
+      durationDays: null,
       quantity: "11 mL",
       instructions: "With food",
       sortOrder: 10,
@@ -65,6 +73,29 @@ const stubSupabase = {
 };
 
 describe("renderPrescriptionPdf", () => {
+  it("renders an item carrying a concentration and the standard directions", async () => {
+    const buffer = await renderPrescriptionPdf(
+      {
+        ...BASE_PRESCRIPTION,
+        items: [
+          {
+            ...BASE_PRESCRIPTION.items[0],
+            drugName: "Metacam",
+            genericName: "Meloxicam",
+            concentrationMgPerUnit: 1.5,
+            doseForm: "ml",
+            doseAmount: 1.47,
+            frequencyPerDay: 1,
+            durationDays: 5,
+          },
+        ],
+      },
+      stubSupabase,
+    );
+
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
+  });
+
   it("produces a real PDF, without a clinic name or signature on record", async () => {
     const buffer = await renderPrescriptionPdf(BASE_PRESCRIPTION, stubSupabase);
 

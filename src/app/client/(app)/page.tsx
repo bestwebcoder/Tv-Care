@@ -13,7 +13,7 @@ import { requireRole } from "@/features/auth/session";
 import { getNextAppointmentForClient } from "@/features/appointments/queries";
 import { getOwnClientRecord } from "@/features/clients/queries";
 import { listPets, signedPhotoUrl } from "@/features/pets/queries";
-import { listPetDewormingStatuses } from "@/features/deworming/queries";
+import { dewormingStatusesByPet, listPetDewormingStatuses } from "@/features/deworming/queries";
 import { listInvoicesForClient } from "@/features/invoices/queries";
 import { listPetVaccinationStatuses } from "@/features/vaccinations/queries";
 import { firstName } from "@/lib/names";
@@ -46,9 +46,7 @@ export default async function ClientDashboardPage() {
   const vaccinationByPet = new Map(
     (vaccinationResult.status === "ok" ? vaccinationResult.data : []).map((row) => [row.petId, row]),
   );
-  const dewormingByPet = new Map(
-    (dewormingResult.status === "ok" ? dewormingResult.data : []).map((row) => [row.petId, row]),
-  );
+  const dewormingByPet = dewormingStatusesByPet(dewormingResult.status === "ok" ? dewormingResult.data : []);
 
   const petMetric: Metric =
     pets.status === "ok" ? { status: "ok", value: pets.data.length } : { status: "error" };
@@ -158,7 +156,8 @@ export default async function ClientDashboardPage() {
                 photoUrl={photos[index] ?? null}
                 href={`/client/pets/${pet.id}`}
                 nextVaccination={vaccinationByPet.get(pet.id) ?? null}
-                nextDeworming={dewormingByPet.get(pet.id) ?? null}
+                nextDeworming={dewormingByPet.get(pet.id)?.internal ?? null}
+                nextExternalTreatment={dewormingByPet.get(pet.id)?.external ?? null}
               />
             ))}
           </div>

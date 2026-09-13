@@ -27,18 +27,16 @@ export function LoginForm() {
           <FormAlert state={state} />
 
           <Field
-            label="Email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
+            label="Email or mobile number"
+            name="identifier"
+            autoComplete="username"
             required
-            errors={fieldErrors?.email}
+            errors={fieldErrors?.identifier}
           />
 
           <div className="grid gap-2">
             <PasswordField
-              label="Password"
+              label="Password or PIN"
               name="password"
               autoComplete="current-password"
               required
@@ -54,6 +52,13 @@ export function LoginForm() {
 
           <SubmitButton pendingLabel="Signing in…">Sign in</SubmitButton>
         </form>
+
+        <p className="text-muted-foreground mt-6 text-center text-sm">
+          New to The Traveling Vet?{" "}
+          <Link href="/register" className="text-foreground font-medium underline underline-offset-4">
+            Create an account
+          </Link>
+        </p>
       </CardContent>
     </Card>
   );

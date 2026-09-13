@@ -2,11 +2,12 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 
 import { parsePublicEnv, parseServerEnv } from "@/lib/env";
+import { credentialsFor } from "@/lib/validation/auth";
 
 /**
- * Checkpoint 4 verification — registration, email confirmation, sign in and
- * password reset, exercised against the real auth server with real emails
- * caught by Mailpit.
+ * Registration, sign in and password reset, exercised against the real auth
+ * server with real emails caught by Mailpit. Registration is frictionless:
+ * email or mobile number, a password or 6-digit PIN, and a session at once.
  */
 
 const publicEnv = parsePublicEnv(process.env);
@@ -125,16 +126,69 @@ describe("registration provisions an account", () => {
     });
   });
 
-  it("refuses a self-registration with no phone number", async () => {
+  it("provisions an email-only registration with the profile still to complete", async () => {
     const suffix = uniqueSuffix();
+    const email = `nophone-${suffix}@tvcare.test`;
 
-    const { error } = await anonClient().auth.signUp({
-      email: `nophone-${suffix}@tvcare.test`,
-      password: PASSWORD,
-      options: { data: { full_name: `No Phone ${suffix}`, signup_source: "self_registration" } },
+    const { data, error } = await anonClient().auth.signUp({
+      email,
+      password: "482913",
+      options: { data: { signup_source: "self_registration" } },
     });
 
-    expect(error).not.toBeNull();
+    expect(error).toBeNull();
+    expect(data.session).not.toBeNull();
+
+    const { data: clientRecord } = await admin
+      .from("clients")
+      .select("full_name, phone, email, profile_completed_at")
+      .eq("user_id", data.user!.id)
+      .single();
+
+    // A placeholder name, no phone yet, and not complete — the /client gate
+    // sends them to the profile screen.
+    expect(clientRecord).toMatchObject({ full_name: `nophone-${suffix}`, phone: null, email, profile_completed_at: null });
+  });
+
+  it("registers with a mobile number and a PIN, and signs in with them", async () => {
+    const suffix = uniqueSuffix();
+    const phone = `+88018${suffix}88`;
+    // Exactly what registerAction sends for a phone registration.
+    const { email: signInEmail } = credentialsFor({ kind: "phone", phone }, "482913");
+
+    const { data, error } = await anonClient().auth.signUp({
+      email: signInEmail,
+      password: "482913",
+      options: { data: { signup_source: "self_registration", phone } },
+    });
+
+    expect(error).toBeNull();
+    expect(data.session).not.toBeNull();
+
+    const { data: profile } = await admin.from("users").select("email, phone").eq("id", data.user!.id).single();
+    // The placeholder sign-in address is an identity, never stored as a contact email.
+    expect(profile).toMatchObject({ email: null, phone });
+
+    const { data: clientRecord } = await admin
+      .from("clients")
+      .select("phone, profile_completed_at")
+      .eq("user_id", data.user!.id)
+      .single();
+    expect(clientRecord).toMatchObject({ phone, profile_completed_at: null });
+
+    const signedIn = await anonClient().auth.signInWithPassword(credentialsFor({ kind: "phone", phone: "018" + suffix + "88" }, "482913"));
+    expect(signedIn.error).toBeNull();
+    expect(signedIn.data.session).not.toBeNull();
+  });
+
+  it("refuses a staff-created client record to go without a phone", async () => {
+    const { data: organization } = await admin.from("organizations").select("id").eq("slug", "the-traveling-vet").single();
+
+    const { error } = await admin
+      .from("clients")
+      .insert({ organization_id: organization!.id, full_name: `Walk-in ${uniqueSuffix()}`, profile_completed_at: new Date().toISOString() });
+
+    expect(error?.code).toBe("23514");
   });
 
   it("refuses a second account on the same phone number", async () => {
@@ -173,38 +227,15 @@ describe("registration provisions an account", () => {
   });
 });
 
-/** Clicks the confirmation link the way /auth/confirm does: server-side, from
- *  the token hash in the email, so it works on any device. */
-async function confirmEmail(address: string): Promise<void> {
-  const body = await waitForEmail(address, /confirm your tv care account/i);
-  const { error } = await anonClient().auth.verifyOtp({
-    type: "email",
-    token_hash: tokenHashFrom(body),
-  });
-  expect(error).toBeNull();
-}
-
 describe("sign in after registration", () => {
-  it("will not sign in until the email is confirmed", async () => {
+  it("signs in straight after registering, with no confirmation step", async () => {
     const suffix = uniqueSuffix();
     const signup = selfRegistration(suffix);
 
     const signedUp = await anonClient().auth.signUp(signup);
-    // Confirmations are enabled (config.toml, auth.email.enable_confirmations
-    // = true): signUp returns the user but no session, so registerAction has
-    // nothing to sign anyone in with and shows "check your inbox" instead.
-    expect(signedUp.data.user?.email_confirmed_at).toBeFalsy();
-    expect(signedUp.data.session).toBeNull();
-
-    const tooEarly = await anonClient().auth.signInWithPassword({
-      email: signup.email,
-      password: PASSWORD,
-    });
-    expect(tooEarly.data.session).toBeNull();
-    // The exact code loginAction branches on to explain itself to the user.
-    expect(tooEarly.error?.code).toBe("email_not_confirmed");
-
-    await confirmEmail(signup.email);
+    // Confirmations are off (config.toml): signUp returns a session, which is
+    // what lets registerAction send the client straight to their profile.
+    expect(signedUp.data.session).not.toBeNull();
 
     const signedIn = await anonClient().auth.signInWithPassword({
       email: signup.email,
@@ -214,18 +245,15 @@ describe("sign in after registration", () => {
     expect(signedIn.data.session).not.toBeNull();
   }, 45_000);
 
-  it("rejects a password the registration form would not accept", async () => {
-    // Guards config.toml against src/lib/validation/auth.ts drifting apart. A
-    // 6-digit PIN was valid before; the auth server itself must refuse it now,
-    // not merely the Zod schema in front of it.
-    const suffix = uniqueSuffix();
-    const { error } = await anonClient().auth.signUp({
-      ...selfRegistration(suffix),
-      password: "482913",
-    });
+  it("accepts a 6-digit PIN and refuses anything shorter", async () => {
+    // Guards config.toml against clientPasswordSchema drifting apart: the
+    // server floor is the client rule's shortest credential, a 6-digit PIN.
+    const accepted = await anonClient().auth.signUp({ ...selfRegistration(uniqueSuffix()), password: "482913" });
+    expect(accepted.error).toBeNull();
 
-    expect(error).not.toBeNull();
-    expect(error!.code).toBe("weak_password");
+    const refused = await anonClient().auth.signUp({ ...selfRegistration(uniqueSuffix()), password: "48291" });
+    expect(refused.error).not.toBeNull();
+    expect(refused.error!.code).toBe("weak_password");
   });
 
   it("records the login in the audit trail", async () => {
@@ -233,7 +261,6 @@ describe("sign in after registration", () => {
     const signup = selfRegistration(suffix);
     const { data: signUpData } = await anonClient().auth.signUp(signup);
 
-    await confirmEmail(signup.email);
     await anonClient().auth.signInWithPassword({ email: signup.email, password: PASSWORD });
 
     const { data: logins } = await admin

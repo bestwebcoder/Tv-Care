@@ -39,6 +39,7 @@ export function InvoiceDetailView({
   refunds,
   pdfUrl,
   canEdit,
+  canCollectOnSite = false,
 }: {
   invoice: InvoiceDetailData;
   services: ServiceSummary[];
@@ -46,8 +47,12 @@ export function InvoiceDetailView({
   refunds: Refund[];
   pdfUrl: string | null;
   canEdit: boolean;
+  /** The attending vet, without billing access, collecting payment in person. */
+  canCollectOnSite?: boolean;
 }) {
-  const canRecordPayment = canEdit && (invoice.status === "issued" || invoice.status === "partially_paid");
+  const isOpenForPayment = invoice.status === "issued" || invoice.status === "partially_paid";
+  const canRecordPayment = canEdit && isOpenForPayment;
+  const collectsOnSite = !canEdit && canCollectOnSite && isOpenForPayment;
   // Not the same condition as taking a payment, and getting them confused hides
   // the button exactly where it is needed: a fully *paid* invoice cannot take
   // another payment, and is the one most likely to be refunded.
@@ -120,8 +125,10 @@ export function InvoiceDetailView({
           invoiceId={invoice.id}
           payments={payments}
           refunds={refunds}
-          canRecordPayment={canRecordPayment}
+          canRecordPayment={canRecordPayment || collectsOnSite}
           canRefund={canRefund}
+          mode={collectsOnSite ? "on_site" : "staff"}
+          canVerify={canEdit}
         /> : null}
 
       {canCancel ? <CancelInvoiceButton invoiceId={invoice.id} /> : null}

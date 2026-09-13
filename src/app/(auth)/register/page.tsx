@@ -4,9 +4,8 @@ import { RegisterForm } from "./register-form";
 
 export const metadata: Metadata = { title: "Create an account · TV Care" };
 
-// The link back to sign in lives inside the form: once registration succeeds
-// the form is replaced by a "confirm your email" panel, and "Already have an
-// account?" is the wrong sentence to leave sitting under it.
+// A successful registration signs the client in and redirects them to complete
+// their profile, so everything on this page lives inside the form.
 export default function RegisterPage() {
   return <RegisterForm />;
 }

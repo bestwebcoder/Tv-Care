@@ -1,4 +1,4 @@
-import { Lock, PawPrint, Receipt, Stethoscope, Users } from "lucide-react";
+import { Lock, PawPrint, Receipt, Stethoscope, Users, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -21,15 +21,35 @@ export default async function DoctorReportsPage() {
   const doctor = await getOwnDoctorRecord();
   const canViewReports = doctor.status === "ok" && doctor.data?.canViewReports === true;
 
+  // Every doctor sees their own revenue; the practice-wide reports need access.
+  const myRevenue = (
+    <Link href="/doctor/reports/my-revenue" className="block">
+      <Card className="hover:border-ring focus-within:border-ring transition-colors">
+        <CardContent className="flex items-start gap-4">
+          <span className="bg-secondary text-secondary-foreground flex size-10 shrink-0 items-center justify-center rounded-lg">
+            <Wallet className="size-5" aria-hidden />
+          </span>
+          <div className="grid gap-0.5">
+            <span className="font-medium">My revenue</span>
+            <span className="text-muted-foreground text-sm">
+              What your visits billed and collected, what you collected on site, and what is still owed.
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
+  );
+
   if (!canViewReports) {
     return (
       <div className="grid gap-6">
         <h1>Reports</h1>
+        {myRevenue}
         <Card>
           <CardContent>
             <EmptyState
               icon={Lock}
-              title="You do not have report access"
+              title="Practice-wide reports need report access"
               description="Ask an administrator to grant you report access from Admin → Reports."
             />
           </CardContent>
@@ -46,6 +66,7 @@ export default async function DoctorReportsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {myRevenue}
         {CATEGORIES.map((category) => (
           <Link key={category.href} href={category.href} className="block">
             <Card className="hover:border-ring focus-within:border-ring transition-colors">

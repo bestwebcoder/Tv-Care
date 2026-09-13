@@ -25,11 +25,10 @@
  * THE PASSWORD
  *
  * Every account is created with the same password, passed with --password, and
- * it must satisfy the same policy as passwordSchema in
- * src/lib/validation/auth.ts (and auth.minimum_password_length /
- * password_requirements in supabase/config.toml). Registration used to accept
- * a 6-digit PIN and this script took --pin to match; that rule is gone, and a
- * short PIN is now rejected by the auth server itself.
+ * it must satisfy passwordSchema in src/lib/validation/auth.ts — the staff rule,
+ * deliberately stricter than the 6-digit PIN a client may choose for themselves
+ * at registration (clientPasswordSchema). A roster-wide shared credential is the
+ * weakest place to allow a PIN, so this script does not.
  *
  * One password shared across a roster is only safe where the people are
  * fictional. A client's portal shows their pets' medical records, and anyone

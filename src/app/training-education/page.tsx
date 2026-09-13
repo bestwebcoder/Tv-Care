@@ -5,6 +5,7 @@ import { GoldRule, MarketingBand } from "@/components/marketing/marketing-band";
 import { PublicFooter } from "@/components/marketing/public-footer";
 import { PublicHeader } from "@/components/marketing/public-header";
 import { SectionCards } from "@/components/marketing/section-cards";
+import { TrainingCalendar } from "@/components/marketing/training-calendar";
 import { ServiceCategorySection } from "@/components/marketing/service-category-section";
 import { EmptyState } from "@/components/states/empty-state";
 import { ErrorState } from "@/components/states/error-state";
@@ -14,7 +15,9 @@ import { getPublicPageSectionItems, type PageSectionItems } from "@/features/pag
 import { getPublicServices } from "@/features/services/queries";
 import { siteContentValue } from "@/features/site-content/fields";
 import { getPublicSiteContent } from "@/features/site-content/queries";
+import { getPracticeTimeZone, listPublicTrainingCourses } from "@/features/training/queries";
 import { categoriesFor, intoCategories } from "@/lib/service-pages";
+import { utcToZonedParts, zonedToUtcIso } from "@/lib/zoned-time";
 
 export const metadata: Metadata = { title: "Training & Education · TV Care" };
 
@@ -37,7 +40,8 @@ const HREF = "/training-education";
  * rules and a two-column grid, because these cards carry long topic lists and
  * often no figure.
  */
-export default async function TrainingEducationPage() {
+export default async function TrainingEducationPage({ searchParams }: PageProps<"/training-education">) {
+  const { month: monthParam } = await searchParams;
   const organization = await getPublicOrganizationInfo();
 
   // No practice resolved means nothing to show — never everything.
@@ -52,6 +56,25 @@ export default async function TrainingEducationPage() {
     organization ? getPublicPageSectionItems(organization.id, "training") : Promise.resolve<PageSectionItems>({}),
   ]);
   const audiences = sections.audiences ?? [];
+
+  // The course calendar, in the practice's own timezone. An unreadable ?month
+  // falls back to this month rather than an error.
+  const timeZone = organization ? await getPracticeTimeZone(organization.id) : "Asia/Dhaka";
+  const nowIso = new Date().toISOString();
+  const today = utcToZonedParts(nowIso, timeZone).date;
+  const month = typeof monthParam === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : today.slice(0, 7);
+  const [monthYear, monthIndex] = month.split("-").map(Number);
+  const nextMonth = `${monthIndex === 12 ? monthYear + 1 : monthYear}-${String(monthIndex === 12 ? 1 : monthIndex + 1).padStart(2, "0")}`;
+
+  const [monthCourses, upcomingCourses] = organization
+    ? await Promise.all([
+        listPublicTrainingCourses(organization.id, timeZone, {
+          fromIso: zonedToUtcIso(`${month}-01`, "00:00", timeZone),
+          toIso: zonedToUtcIso(`${nextMonth}-01`, "00:00", timeZone),
+        }),
+        listPublicTrainingCourses(organization.id, timeZone, { fromIso: nowIso, limit: 6 }),
+      ])
+    : [null, null];
 
   const categories = servicesResult.status === "ok" ? categoriesFor(intoCategories(servicesResult.data), HREF) : [];
 
@@ -86,6 +109,18 @@ export default async function TrainingEducationPage() {
         {audiences.length > 0 ? (
           <div className="mx-auto w-full max-w-6xl px-4 pt-12 sm:px-6 lg:px-14">
             <SectionCards items={audiences} variant="cards" columns={3} tone="marketing" />
+          </div>
+        ) : null}
+
+        {monthCourses?.status === "ok" && upcomingCourses?.status === "ok" ? (
+          <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-14">
+            <TrainingCalendar
+              month={month}
+              monthCourses={monthCourses.data}
+              upcoming={upcomingCourses.data}
+              basePath={HREF}
+              today={today}
+            />
           </div>
         ) : null}
 

@@ -10,11 +10,17 @@ import { SubmitButton } from "@/components/form/submit-button";
 import { TextAreaField } from "@/components/form/textarea-field";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PendingPaymentActions } from "@/components/invoices/pending-payment-actions";
 import { RefundDialog } from "@/components/invoices/refund-dialog";
-import { recordPaymentAction } from "@/features/payments/actions";
+import { recordOnSitePaymentAction, recordPaymentAction } from "@/features/payments/actions";
 import type { Payment, Refund } from "@/features/payments/queries";
 import { formatCurrency } from "@/lib/currency";
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_SOURCE_LABELS,
+  PAYMENT_STATUS_LABELS,
+} from "@/lib/validation/payment";
 import { idleState } from "@/lib/forms";
 
 export function RecordPaymentForm({
@@ -23,6 +29,8 @@ export function RecordPaymentForm({
   refunds,
   canRecordPayment,
   canRefund,
+  mode = "staff",
+  canVerify = false,
 }: {
   invoiceId: string;
   payments: Payment[];
@@ -31,8 +39,15 @@ export function RecordPaymentForm({
   canRecordPayment: boolean;
   /** Any issued invoice with a payment on it, including one already paid in full. */
   canRefund: boolean;
+  /**
+   * "on_site": the attending vet recording money they collected in person —
+   * no refunds, no billing access, only their own visit.
+   */
+  mode?: "staff" | "on_site";
+  /** Verify or reject payments clients submitted. Billing access. */
+  canVerify?: boolean;
 }) {
-  const [state, formAction] = useActionState(recordPaymentAction, idleState);
+  const [state, formAction] = useActionState(mode === "on_site" ? recordOnSitePaymentAction : recordPaymentAction, idleState);
   const fieldErrors = state.status === "error" ? state.fieldErrors : undefined;
 
   // What has already gone back against each payment, so a row can show it and
@@ -68,11 +83,25 @@ export function RecordPaymentForm({
                       ) : null}
                     </span>
                     <span className="text-muted-foreground text-xs" data-numeric>
-                      {PAYMENT_METHOD_LABELS[payment.method]} · {format(new Date(payment.paidAt), "d MMM yyyy")}
+                      {payment.gateway === "sslcommerz" ? "Online payment" : PAYMENT_METHOD_LABELS[payment.method]} ·{" "}
+                      {format(new Date(payment.paidAt), "d MMM yyyy")}
                       {payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
+                      {payment.source !== "staff" ? ` · ${PAYMENT_SOURCE_LABELS[payment.source]}` : ""}
                     </span>
+                    {payment.status !== "completed" ? (
+                      <span className="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge variant={payment.status === "failed" ? "destructive" : "secondary"}>
+                          {PAYMENT_STATUS_LABELS[payment.status]}
+                        </Badge>
+                        {payment.rejectionReason ? <span className="text-muted-foreground">{payment.rejectionReason}</span> : null}
+                      </span>
+                    ) : null}
                   </div>
-                  {canRefund ? <RefundDialog payment={payment} refundedPaisa={refunded} /> : null}
+                  {payment.status === "pending" && canVerify && payment.source === "client_submission" ? (
+                    <PendingPaymentActions payment={payment} />
+                  ) : payment.status === "completed" && canRefund ? (
+                    <RefundDialog payment={payment} refundedPaisa={refunded} />
+                  ) : null}
                 </li>
               );
             })}
@@ -101,6 +130,11 @@ export function RecordPaymentForm({
 
         {canRecordPayment ? (
           <form action={formAction} className="grid gap-4 border-t pt-4">
+            {mode === "on_site" ? (
+              <p className="text-muted-foreground text-sm">
+                Record money you collected in person for this visit. It is marked as collected by you.
+              </p>
+            ) : null}
             <FormAlert state={state} />
             <input type="hidden" name="invoiceId" value={invoiceId} />
             <div className="grid gap-3 sm:grid-cols-3">
@@ -115,7 +149,9 @@ export function RecordPaymentForm({
             </div>
             <TextAreaField label="Notes (optional)" name="notes" rows={2} />
             <div>
-              <SubmitButton pendingLabel="Recording…">Record payment</SubmitButton>
+              <SubmitButton pendingLabel="Recording…">
+                {mode === "on_site" ? "Record collected payment" : "Record payment"}
+              </SubmitButton>
             </div>
           </form>
         ) : null}

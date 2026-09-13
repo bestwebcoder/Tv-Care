@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireRole } from "@/features/auth/session";
 import { listPracticeDewormingStatuses } from "@/features/deworming/queries";
+import { PARASITE_TYPE_SHORT_LABELS } from "@/lib/parasite-type";
 import { dueStatusBadgeVariant, getDueInfo } from "@/lib/due-window";
 
 export const metadata: Metadata = { title: "Deworming · TV Care" };
@@ -45,7 +46,9 @@ export default async function DoctorDewormingPage({ searchParams }: PageProps<"/
     <div className="grid gap-6">
       <div className="grid gap-1">
         <h1>Deworming</h1>
-        <p className="text-muted-foreground">Patients due or overdue for their next deworming, soonest first.</p>
+        <p className="text-muted-foreground">
+          Patients due or overdue for deworming or tick &amp; flea treatment, soonest first.
+        </p>
       </div>
 
       <Card>
@@ -53,18 +56,20 @@ export default async function DoctorDewormingPage({ searchParams }: PageProps<"/
           {result.status === "error" ? (
             <ErrorState title="Deworming records could not be loaded" />
           ) : due.length === 0 ? (
-            <EmptyState icon={Worm} title="Nothing due" description="No patient is due for deworming in the next 30 days." />
+            <EmptyState icon={Worm} title="Nothing due" description="No patient is due for parasite treatment in the next 30 days." />
           ) : (
             <ul className="divide-border grid divide-y">
               {visible.map((row) => (
-                <li key={row.petId}>
+                <li key={`${row.petId}-${row.parasiteType}`}>
                   <Link
                     href={`/doctor/patients/${row.petId}/deworming`}
                     className="hover:bg-muted/50 focus-visible:ring-ring -mx-2 flex min-h-11 items-center gap-4 rounded-lg px-2 py-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
                     <div className="grid flex-1 gap-0.5">
                       <span className="text-sm font-medium">{row.petName}</span>
-                      <span className="text-muted-foreground text-sm">{row.product}</span>
+                      <span className="text-muted-foreground text-sm">
+                        {PARASITE_TYPE_SHORT_LABELS[row.parasiteType]} · {row.product}
+                      </span>
                     </div>
                     <Badge variant={dueStatusBadgeVariant(row.due.status)}>{row.due.label}</Badge>
                   </Link>

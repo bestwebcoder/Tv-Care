@@ -52,10 +52,25 @@ export function SoapForm({
             errors={fieldErrors?.chiefComplaint}
           />
           <TextAreaField
-            label="History"
+            label="Presenting history"
             name="history"
             defaultValue={soapRecord?.history ?? ""}
+            hint="The history of this complaint."
             errors={fieldErrors?.history}
+          />
+          <TextAreaField
+            label="Owner-reported history"
+            name="ownerHistory"
+            defaultValue={soapRecord?.ownerHistory ?? ""}
+            hint="Earlier illnesses, surgeries, diet and environment, as the owner describes them."
+            errors={fieldErrors?.ownerHistory}
+          />
+          <TextAreaField
+            label="Prior medications"
+            name="priorMedications"
+            defaultValue={soapRecord?.priorMedications ?? ""}
+            hint="Anything already given or recently taken — drug, dose and when last given, if known."
+            errors={fieldErrors?.priorMedications}
           />
           <Field
             label="Duration"
@@ -93,12 +108,12 @@ export function SoapForm({
         <CardContent className="grid gap-5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Field
-              label="Temperature (°C)"
-              name="temperatureCelsius"
+              label="Temperature (°F)"
+              name="temperatureFahrenheit"
               inputMode="decimal"
-              defaultValue={soapRecord?.temperatureCelsius ?? ""}
-              hint="For example 38.5"
-              errors={fieldErrors?.temperatureCelsius}
+              defaultValue={soapRecord?.temperatureFahrenheit ?? ""}
+              hint="For example 101.5"
+              errors={fieldErrors?.temperatureFahrenheit}
             />
             <Field
               label="Pulse (bpm)"

@@ -11,8 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireAccess } from "@/features/auth/access";
 import { listPaymentsForOrg } from "@/features/payments/queries";
-import type { PaymentInput } from "@/lib/validation/payment";
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/validation/payment";
+import type { PaymentInput, PaymentStatus } from "@/lib/validation/payment";
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  PAYMENT_SOURCE_LABELS,
+  PAYMENT_STATUS_LABELS,
+  PAYMENT_STATUSES,
+} from "@/lib/validation/payment";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Payments · TV Care" };
@@ -20,17 +26,30 @@ export const metadata: Metadata = { title: "Payments · TV Care" };
 export default async function AdminPaymentsPage({ searchParams }: PageProps<"/admin/payments">) {
   await requireAccess("finance");
 
-  const { method, from, to, page: pageParam } = await searchParams;
+  const { method, status, from, to, page: pageParam } = await searchParams;
   const activeMethod = typeof method === "string" ? (method as PaymentInput["method"]) : undefined;
+  const activeStatus =
+    typeof status === "string" && (PAYMENT_STATUSES as readonly string[]).includes(status) ? (status as PaymentStatus) : undefined;
   const from_ = typeof from === "string" ? from : undefined;
   const to_ = typeof to === "string" ? to : undefined;
   const page = typeof pageParam === "string" ? Number(pageParam) || 1 : 1;
 
-  const result = await listPaymentsForOrg({ method: activeMethod, from: from_, to: to_, page });
+  const result = await listPaymentsForOrg({ method: activeMethod, status: activeStatus, from: from_, to: to_, page });
 
   function methodHref(value: PaymentInput["method"] | "") {
     const params = new URLSearchParams();
     if (value) params.set("method", value);
+    if (activeStatus) params.set("status", activeStatus);
+    if (from_) params.set("from", from_);
+    if (to_) params.set("to", to_);
+    const query = params.toString();
+    return query ? `/admin/payments?${query}` : "/admin/payments";
+  }
+
+  function statusHref(value: PaymentStatus | "") {
+    const params = new URLSearchParams();
+    if (activeMethod) params.set("method", activeMethod);
+    if (value) params.set("status", value);
     if (from_) params.set("from", from_);
     if (to_) params.set("to", to_);
     const query = params.toString();
@@ -41,7 +60,9 @@ export default async function AdminPaymentsPage({ searchParams }: PageProps<"/ad
     <div className="grid gap-6">
       <div className="grid gap-1">
         <h1>Payments</h1>
-        <p className="text-muted-foreground">Every payment recorded across the practice, newest first.</p>
+        <p className="text-muted-foreground">
+          Every payment across the practice, newest first — including those clients submitted that are awaiting verification.
+        </p>
       </div>
 
       <Card>
@@ -70,7 +91,22 @@ export default async function AdminPaymentsPage({ searchParams }: PageProps<"/ad
             ))}
           </div>
 
-          <DateRangeFilter action="/admin/payments" from={from_} to={to_} preserve={{ method: activeMethod }} />
+          <div className="flex flex-wrap gap-2">
+            {(["", ...PAYMENT_STATUSES] as const).map((value) => (
+              <Link
+                key={value || "any"}
+                href={statusHref(value)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs",
+                  (activeStatus ?? "") === value ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground",
+                )}
+              >
+                {value ? PAYMENT_STATUS_LABELS[value] : "Any status"}
+              </Link>
+            ))}
+          </div>
+
+          <DateRangeFilter action="/admin/payments" from={from_} to={to_} preserve={{ method: activeMethod, status: activeStatus }} />
 
           {result.status === "error" ? (
             <ErrorState title="Payments could not be loaded" />
@@ -96,8 +132,14 @@ export default async function AdminPaymentsPage({ searchParams }: PageProps<"/ad
                         <span className="text-muted-foreground text-xs" data-numeric>
                           {format(new Date(payment.paidAt), "d MMM yyyy · h:mm a")}
                           {payment.referenceNumber ? ` · Ref ${payment.referenceNumber}` : ""}
+                          {payment.source !== "staff" ? ` · ${PAYMENT_SOURCE_LABELS[payment.source]}` : ""}
                         </span>
                       </div>
+                      {payment.status !== "completed" ? (
+                        <Badge variant={payment.status === "failed" ? "destructive" : "outline"}>
+                          {PAYMENT_STATUS_LABELS[payment.status]}
+                        </Badge>
+                      ) : null}
                       <span className="text-sm font-medium" data-numeric>
                         {payment.amount}
                       </span>
@@ -108,7 +150,7 @@ export default async function AdminPaymentsPage({ searchParams }: PageProps<"/ad
               </ul>
               <Pagination
                 basePath="/admin/payments"
-                searchParams={{ method: activeMethod, from: from_, to: to_ }}
+                searchParams={{ method: activeMethod, status: activeStatus, from: from_, to: to_ }}
                 page={result.page}
                 pageSize={result.pageSize}
                 totalCount={result.totalCount}

@@ -23,6 +23,7 @@ export function PetCard({
   href,
   nextVaccination,
   nextDeworming,
+  nextExternalTreatment,
 }: {
   pet: PetDetail;
   photoUrl: string | null;
@@ -30,6 +31,8 @@ export function PetCard({
   /** Vaccine name and next due date, or null when none is on record yet. */
   nextVaccination?: { vaccineName: string; nextDueDate: string | null } | null;
   nextDeworming?: { product: string; nextDueDate: string } | null;
+  /** Tick, flea and mite treatment — its own clock, separate from deworming. */
+  nextExternalTreatment?: { product: string; nextDueDate: string } | null;
 }) {
   return (
     <Card className="hover:border-ring focus-within:border-ring transition-colors">
@@ -78,6 +81,12 @@ export function PetCard({
               <span>
                 Next deworming —{" "}
                 {nextDeworming ? `${nextDeworming.product}, ${getDueInfo(nextDeworming.nextDueDate).label}` : "not scheduled yet"}
+              </span>
+              <span>
+                Next tick &amp; flea treatment —{" "}
+                {nextExternalTreatment
+                  ? `${nextExternalTreatment.product}, ${getDueInfo(nextExternalTreatment.nextDueDate).label}`
+                  : "not scheduled yet"}
               </span>
             </span>
           </span>

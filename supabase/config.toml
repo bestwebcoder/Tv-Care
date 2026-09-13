@@ -182,12 +182,16 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-# Kept in lockstep with passwordSchema in src/lib/validation/auth.ts. If the two drift apart the
-# user gets a server rejection the form said nothing about.
-minimum_password_length = 10
+# The server floor is the client rule: a pet owner may sign in with a 6-digit PIN
+# (clientPasswordSchema in src/lib/validation/auth.ts). Doctors, staff and admins are still held
+# to passwordSchema's 10 characters with mixed case and a digit — by the application, on every
+# path that sets their password, because this setting cannot tell roles apart.
+# Brute force against a PIN is bounded by auth.rate_limit.sign_in_sign_ups below.
+minimum_password_length = 6
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = "lower_upper_letters_digits"
+# Empty: a numeric PIN has no letters. Staff requirements are enforced in the application.
+password_requirements = ""
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -228,11 +232,10 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-# On. signUp no longer returns a session, so registerAction cannot sign anyone in — it shows a
-# "check your inbox" screen instead, and loginAction handles the email_not_confirmed code for
-# anyone who tries to sign in before clicking the link. The hosted project needs this set too;
-# it is not carried over by a migration.
-enable_confirmations = true
+# Off. Registration is frictionless by the practice's decision: signUp returns a session and the
+# client goes straight to completing their profile. The hosted project needs this set too; it is
+# not carried over by a migration.
+enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
@@ -276,6 +279,9 @@ content_path = "./supabase/templates/invite.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
+# Off. Supabase only accepts phone + password accounts when an SMS provider is configured, and
+# none is. Clients still register and sign in with a mobile number: see phoneLoginEmail in
+# src/lib/validation/auth.ts.
 enable_signup = false
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false

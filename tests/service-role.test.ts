@@ -52,6 +52,12 @@ const EXEMPT: Record<string, string> = {
   // The dispatcher sends every practice's due notifications; it acts for the
   // system, not for a signed-in person.
   processScheduledNotifications: "sends every practice's due notifications",
+  // Online payment callbacks. The gateway names a payment only by its
+  // transaction ID (112 random bits), so the practice is not known until that
+  // row is read; nothing is completed without the gateway's own validation of
+  // the amount and currency. See src/features/payments/gateway.ts.
+  settleGatewayPayment: "settles a gateway-validated online payment by transaction ID",
+  abandonGatewayPayment: "fails a still-pending online checkout by transaction ID",
 };
 
 describe("service-role callers", () => {

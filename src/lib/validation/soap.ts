@@ -72,6 +72,8 @@ export const soapRecordSchema = z.object({
   // SUBJECTIVE
   chiefComplaint: optionalText(500, "Chief complaint"),
   history: optionalText(2000, "History"),
+  ownerHistory: optionalText(2000, "Owner-reported history"),
+  priorMedications: optionalText(2000, "Prior medications"),
   duration: optionalText(100, "Duration"),
   appetite: optionalText(300, "Appetite"),
   waterIntake: optionalText(300, "Water intake"),
@@ -84,7 +86,8 @@ export const soapRecordSchema = z.object({
   otherObservations: optionalText(2000, "Other observations"),
 
   // OBJECTIVE — vitals
-  temperatureCelsius: optionalDecimal(20, 45, "Temperature"),
+  // °F, as the practice records it. The database derives Celsius from this.
+  temperatureFahrenheit: optionalDecimal(68, 113, "Temperature (°F)"),
   pulseBpm: optionalInt(1, 399, "Pulse"),
   respiratoryRateBpm: optionalInt(1, 149, "Respiratory rate"),
   weightKg: weightSchema,
@@ -132,6 +135,8 @@ export function soapRecordToRow(values: SoapRecordValues) {
   return {
     chief_complaint: values.chiefComplaint,
     history: values.history,
+    owner_history: values.ownerHistory,
+    prior_medications: values.priorMedications,
     duration: values.duration,
     appetite: values.appetite,
     water_intake: values.waterIntake,
@@ -143,7 +148,7 @@ export function soapRecordToRow(values: SoapRecordValues) {
     sneezing: values.sneezing,
     other_observations: values.otherObservations,
 
-    temperature_celsius: values.temperatureCelsius,
+    temperature_fahrenheit: values.temperatureFahrenheit,
     pulse_bpm: values.pulseBpm,
     respiratory_rate_bpm: values.respiratoryRateBpm,
     weight_grams: values.weightKg,

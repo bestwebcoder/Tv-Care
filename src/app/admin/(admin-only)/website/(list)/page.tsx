@@ -65,6 +65,18 @@ export default async function AdminWebsitePage({ searchParams }: PageProps<"/adm
         </Card>
       </Link>
 
+      <Link href="/admin/website/training" className="block">
+        <Card className="transition-colors hover:bg-muted/50">
+          <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
+            <div className="grid gap-1.5">
+              <CardTitle className="text-base">Training calendar</CardTitle>
+              <CardDescription>Course dates for veterinarians, shown as a calendar on the Training &amp; Education page.</CardDescription>
+            </div>
+            <ChevronRight className="text-muted-foreground size-5 shrink-0" aria-hidden />
+          </CardHeader>
+        </Card>
+      </Link>
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Pages</CardTitle>

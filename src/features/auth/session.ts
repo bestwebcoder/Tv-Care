@@ -147,7 +147,8 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   return {
     id: userId,
     fullName: profile.full_name,
-    email: profile.email,
+    // Null for a client who registered with a mobile number only.
+    email: profile.email ?? "",
     phone: profile.phone,
     avatarUrl: profile.avatar_url,
     roles: [...new Set(roles)],

@@ -68,7 +68,9 @@ export function SoapDetail({
           <dl className="grid gap-4 sm:grid-cols-2">
             <Detail label="Chief complaint" value={record.chiefComplaint} />
             <Detail label="Duration" value={record.duration} />
-            <Detail label="History" value={record.history} />
+            <Detail label="Presenting history" value={record.history} />
+            <Detail label="Owner-reported history" value={record.ownerHistory} />
+            <Detail label="Prior medications" value={record.priorMedications} />
             {SYSTEM_REVIEW_FIELDS.map((field) => (
               <Detail key={field.name} label={field.label} value={record[field.name]} />
             ))}
@@ -83,7 +85,7 @@ export function SoapDetail({
         </CardHeader>
         <CardContent>
           <dl className="grid gap-4 sm:grid-cols-3">
-            <Detail label="Temperature" value={record.temperatureCelsius ? `${record.temperatureCelsius} °C` : null} />
+            <Detail label="Temperature" value={record.temperatureFahrenheit != null ? `${record.temperatureFahrenheit} °F` : null} />
             <Detail label="Pulse" value={record.pulseBpm ? `${record.pulseBpm} bpm` : null} />
             <Detail
               label="Respiratory rate"

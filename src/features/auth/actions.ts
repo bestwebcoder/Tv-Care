@@ -7,8 +7,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionUser, homeHrefFor } from "@/features/auth/session";
 import { failure, invalid, type FormState } from "@/lib/forms";
 import {
+  credentialsFor,
   forgotPasswordSchema,
   loginSchema,
+  passwordSchemaFor,
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation/auth";
@@ -28,11 +30,6 @@ async function redirectHome(): Promise<never> {
 // actions they use it with.
 export type { FormState };
 
-// Not exported: a "use server" module may only export async functions, and
-// exporting a plain constant from one silently voids every other export in it.
-const CONFIRMATION_SENT =
-  "Check your inbox — we have sent you a link to confirm your email address. You can sign in once you have clicked it.";
-
 async function siteOrigin(): Promise<string> {
   const headerList = await headers();
   const host = headerList.get("host") ?? "localhost:3000";
@@ -41,14 +38,24 @@ async function siteOrigin(): Promise<string> {
   return `${protocol}://${host}`;
 }
 
+/**
+ * Client self-registration: one identifier (email or mobile) and a PIN or
+ * password, signed in on the spot. Name and phone numbers are collected on
+ * /client/complete-profile, which the /client area sends a new client to first.
+ *
+ * Email and phone confirmation are off (config.toml) by the practice's
+ * decision, so signUp returns a session. That also means an address or number
+ * already registered is reported as such — with confirmations off Supabase
+ * returns a real error rather than a decoy user, so this form now tells a
+ * visitor whether an account exists. That is the accepted cost of registering
+ * without a confirmation step; sign-in keeps its single, non-committal answer.
+ */
 export async function registerAction(
   _previous: FormState,
   formData: FormData,
 ): Promise<FormState> {
   const parsed = registerSchema.safeParse({
-    fullName: formData.get("fullName"),
-    email: formData.get("email"),
-    phone: formData.get("phone"),
+    identifier: formData.get("identifier"),
     password: formData.get("password"),
     confirmPassword: formData.get("confirmPassword"),
   });
@@ -57,36 +64,49 @@ export async function registerAction(
     return invalid(parsed.error);
   }
 
-  const { fullName, email, phone, password } = parsed.data;
+  const { identifier, password } = parsed.data;
   const supabase = await createClient();
 
-  // Email confirmations are on (config.toml, auth.email.enable_confirmations
-  // = true), so signUp returns no session: the account exists but cannot sign
-  // in until the link in the email is clicked. There is nothing to redirect
-  // into here — the caller shows "check your inbox" instead.
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
+  const { data, error } = await supabase.auth.signUp({
+    ...credentialsFor(identifier, password),
     options: {
-      // Where the confirmation link lands. Verification happens server-side in
-      // /auth/confirm from the token hash, so the link works even when it is
-      // opened on a different device than the one that registered.
-      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/client`,
       // signup_source is what tells the database trigger to provision a pet
       // owner. Accounts created any other way get a profile and nothing more.
-      data: { full_name: fullName, phone, signup_source: "self_registration" },
+      // A phone registration carries its number here: its sign-in address is a
+      // placeholder (see phoneLoginEmail), so this is where the trigger reads it.
+      data: {
+        signup_source: "self_registration",
+        ...(identifier.kind === "phone" ? { phone: identifier.phone } : {}),
+      },
     },
   });
 
   if (error) {
     console.error("[auth] registration failed", error);
 
+    const already =
+      identifier.kind === "email"
+        ? "An account with this email already exists. Sign in instead."
+        : "An account with this mobile number already exists. Sign in instead.";
+
+    if (error.code === "user_already_exists" || error.code === "email_exists") {
+      return { status: "error", message: already, fieldErrors: { identifier: ["Already registered"] } };
+    }
+
     // 23505 is the unique index on (organization_id, phone) raised by the
-    // signup trigger, surfaced through the auth API as a database error.
+    // signup trigger — a walk-in client record already holds this number.
     if (error.message.includes("duplicate key") || error.message.includes("23505")) {
       return {
         status: "error",
-        message: "An account with this phone number already exists.",
+        message: "This mobile number is already on file with the clinic. Contact The Traveling Vet to get a login for it.",
+      };
+    }
+
+    if (error.code === "weak_password") {
+      return {
+        status: "error",
+        message: "Please choose a different PIN or password.",
+        fieldErrors: { password: ["Use a 6-digit PIN, or a password of at least 8 characters"] },
       };
     }
 
@@ -96,21 +116,23 @@ export async function registerAction(
     };
   }
 
-  // Deliberately the same answer whether or not that address was already
-  // taken. With confirmations enabled Supabase does not report an existing
-  // email as an error — it returns a decoy user instead — and matching that
-  // here is what stops this form being used to discover who banks with the
-  // practice. Somebody re-registering an existing address gets no new account
-  // and no new email; the address's real owner is unaffected.
-  return {
-    status: "success",
-    message: CONFIRMATION_SENT,
-  };
+  // Confirmations are off, so this should always hold. If the hosted project
+  // has not been given the same auth settings it will not — say so plainly
+  // rather than dropping someone on the public front page signed out.
+  if (!data.session) {
+    return {
+      status: "success",
+      message: "Your account has been created. Please sign in to continue.",
+    };
+  }
+
+  // The /client area sends a new client to complete their profile first.
+  redirect("/client/complete-profile");
 }
 
 export async function loginAction(_previous: FormState, formData: FormData): Promise<FormState> {
   const parsed = loginSchema.safeParse({
-    email: formData.get("email"),
+    identifier: formData.get("identifier"),
     password: formData.get("password"),
   });
 
@@ -119,21 +141,25 @@ export async function loginAction(_previous: FormState, formData: FormData): Pro
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  const { error } = await supabase.auth.signInWithPassword(
+    credentialsFor(parsed.data.identifier, parsed.data.password),
+  );
 
   if (error) {
     console.error("[auth] sign in failed", error);
 
+    // Accounts registered while confirmations were still on, and never
+    // confirmed, remain unconfirmed.
     if (error.code === "email_not_confirmed") {
       return {
         status: "error",
-        message: "Please confirm your email address first. Check your inbox for the link.",
+        message: "This account was never confirmed. Check your inbox for the link, or contact the clinic.",
       };
     }
 
-    // Deliberately identical for a wrong password and an unknown address, so
+    // Deliberately identical for a wrong password and an unknown account, so
     // this form cannot be used to discover who holds an account here.
-    return { status: "error", message: "Email or password is incorrect." };
+    return { status: "error", message: "Those sign-in details are incorrect." };
   }
 
   return redirectHome();
@@ -189,16 +215,27 @@ export async function resetPasswordAction(
     return invalid(parsed.error);
   }
 
-  const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
+  const user = await getSessionUser();
 
-  if (!claims) {
+  if (!user) {
     return {
       status: "error",
       message: "This reset link has expired. Request a new one to continue.",
     };
   }
 
+  // The form only checked the looser client rule; anyone holding a staff role
+  // is held to the staff one here, because the auth server no longer will.
+  const policy = passwordSchemaFor(user.roles).safeParse(parsed.data.password);
+  if (!policy.success) {
+    return {
+      status: "error",
+      message: "Please correct the highlighted fields.",
+      fieldErrors: { password: policy.error.issues.map((issue) => issue.message) },
+    };
+  }
+
+  const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
 
   if (error) {

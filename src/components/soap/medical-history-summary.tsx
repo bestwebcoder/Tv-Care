@@ -33,7 +33,7 @@ export async function MedicalHistorySummary({ petId }: { petId: string }) {
   const diagnoses = diagnosesResult.data;
   const vitalsHistory = recordsResult.data.filter(
     (record) =>
-      record.temperatureCelsius !== null ||
+      record.temperatureFahrenheit !== null ||
       record.pulseBpm !== null ||
       record.respiratoryRateBpm !== null ||
       record.weight !== null,
@@ -92,7 +92,7 @@ export async function MedicalHistorySummary({ petId }: { petId: string }) {
                     <TableCell data-numeric>{format(new Date(record.createdAt), "d MMM yyyy")}</TableCell>
                     <TableCell data-numeric>{record.weight ?? "—"}</TableCell>
                     <TableCell data-numeric>
-                      {record.temperatureCelsius ? `${record.temperatureCelsius} °C` : "—"}
+                      {record.temperatureFahrenheit != null ? `${record.temperatureFahrenheit} °F` : "—"}
                     </TableCell>
                     <TableCell data-numeric>{record.pulseBpm ? `${record.pulseBpm} bpm` : "—"}</TableCell>
                     <TableCell data-numeric>

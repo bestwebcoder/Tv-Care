@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { DEWORMING_INTERVALS } from "@/lib/deworming-interval";
+import { PARASITE_TYPES } from "@/lib/parasite-type";
 import { kilogramsToGrams, WeightFormatError } from "@/lib/units";
 import { isoDateSchema, optionalText } from "@/lib/validation/common";
 
@@ -27,6 +28,7 @@ const optionalWeightSchema = z
 
 export const dewormingEntrySchema = z
   .object({
+    parasiteType: z.enum(PARASITE_TYPES, "Choose internal or external parasites"),
     product: z.string().trim().min(1, "Enter a product name").max(200, "Keep it under 200 characters"),
     activeIngredient: optionalText(200, "Active ingredient"),
     dose: optionalText(100, "Dose"),
@@ -60,6 +62,7 @@ export type DewormingEntryInput = z.infer<typeof dewormingEntrySchema>;
 
 export function dewormingEntryToRow(data: DewormingEntryInput) {
   return {
+    parasite_type: data.parasiteType,
     product: data.product,
     active_ingredient: data.activeIngredient,
     dose: data.dose,

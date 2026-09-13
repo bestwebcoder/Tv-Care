@@ -21,6 +21,8 @@ function readSoapForm(formData: FormData) {
   return {
     chiefComplaint: field("chiefComplaint"),
     history: field("history"),
+    ownerHistory: field("ownerHistory"),
+    priorMedications: field("priorMedications"),
     duration: field("duration"),
     appetite: field("appetite"),
     waterIntake: field("waterIntake"),
@@ -32,7 +34,7 @@ function readSoapForm(formData: FormData) {
     sneezing: field("sneezing"),
     otherObservations: field("otherObservations"),
 
-    temperatureCelsius: field("temperatureCelsius"),
+    temperatureFahrenheit: field("temperatureFahrenheit"),
     pulseBpm: field("pulseBpm"),
     respiratoryRateBpm: field("respiratoryRateBpm"),
     weightKg: field("weightKg"),

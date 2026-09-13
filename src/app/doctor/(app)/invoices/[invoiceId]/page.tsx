@@ -7,6 +7,7 @@ import { InvoiceDetailView } from "@/components/invoices/invoice-detail";
 import { EmptyState } from "@/components/states/empty-state";
 import { ErrorState } from "@/components/states/error-state";
 import { Card, CardContent } from "@/components/ui/card";
+import { getAppointment } from "@/features/appointments/queries";
 import { requireRole } from "@/features/auth/session";
 import { getOwnDoctorRecord } from "@/features/doctors/queries";
 import { getInvoice, signedInvoicePdfUrl } from "@/features/invoices/queries";
@@ -34,6 +35,12 @@ export default async function DoctorInvoiceDetailPage({ params }: PageProps<"/do
   const invoice = result.data;
   const doctor = await getOwnDoctorRecord();
   const canEdit = doctor.status === "ok" && doctor.data?.canManageBilling === true;
+  const appointmentResult = invoice.appointmentId ? await getAppointment(invoice.appointmentId) : null;
+  const canCollectOnSite =
+    doctor.status === "ok" &&
+    Boolean(doctor.data) &&
+    appointmentResult?.status === "ok" &&
+    appointmentResult.data?.doctorId === doctor.data?.id;
 
   const [servicesResult, paymentsResult, refundsResult, pdfUrl] = await Promise.all([
     listServices(),
@@ -55,8 +62,12 @@ export default async function DoctorInvoiceDetailPage({ params }: PageProps<"/do
           <CardContent>
             <EmptyState
               icon={Lock}
-              title="You can view this invoice, but not change it"
-              description="Only an administrator or a doctor granted billing access can edit invoices, add items, or record payments."
+              title={canCollectOnSite ? "You can collect payment for this visit" : "You can view this invoice, but not change it"}
+              description={
+                canCollectOnSite
+                  ? "Record cash or mobile payments you take in person below. Changing the invoice itself needs billing access from an administrator."
+                  : "Only an administrator or a doctor granted billing access can edit invoices, add items, or record payments."
+              }
             />
           </CardContent>
         </Card>
@@ -69,6 +80,7 @@ export default async function DoctorInvoiceDetailPage({ params }: PageProps<"/do
         refunds={refundsResult.status === "ok" ? refundsResult.data : []}
         pdfUrl={pdfUrl}
         canEdit={canEdit}
+        canCollectOnSite={canCollectOnSite}
       />
     </div>
   );
