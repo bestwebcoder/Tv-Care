@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 
-import { computeAvailableSlots, type AvailabilityResult } from "@/features/appointments/availability";
+import {
+  computeAvailableSlots,
+  type AvailabilityEmptyReason,
+  type AvailabilityResult,
+} from "@/features/appointments/availability";
 import { getSessionUser } from "@/features/auth/session";
 import { getService } from "@/features/services/queries";
 import { failure, invalid, text, type FormState } from "@/lib/forms";
@@ -40,6 +44,56 @@ function slotUnavailable(): FormState {
   };
 }
 
+/**
+ * Why the times on screen are no longer the times the server would offer.
+ *
+ * A booking form is a snapshot: by the time it is submitted the doctor may
+ * have stopped taking appointments, the service may have been withdrawn, or
+ * the slot may simply have gone. Each deserves its own sentence — "choose
+ * another slot" is unhelpful advice when no slot on any day would be accepted.
+ */
+function unavailableFor(reason: AvailabilityEmptyReason): FormState {
+  switch (reason) {
+    case "doctor_unavailable":
+      return {
+        status: "error",
+        message: "This doctor is no longer taking appointments. Please choose another doctor.",
+        fieldErrors: { doctorId: ["Not available"] },
+      };
+    case "service_unavailable":
+      return {
+        status: "error",
+        message: "This service is no longer offered. Please choose another one.",
+        fieldErrors: { serviceId: ["Not available"] },
+      };
+    case "date_in_past":
+      return {
+        status: "error",
+        message: "That date has already passed. Please choose another.",
+        fieldErrors: { date: ["Already passed"] },
+      };
+    case "date_too_far":
+      return {
+        status: "error",
+        message: "That date is further ahead than this practice takes bookings. Please choose an earlier one.",
+        fieldErrors: { date: ["Too far ahead"] },
+      };
+    default:
+      return slotUnavailable();
+  }
+}
+
+/** The slot check both booking and rescheduling run before writing. */
+function slotProblem(availability: AvailabilityResult, time: string): FormState | null {
+  if (availability.status === "error") {
+    return { status: "error", message: "We could not check availability just now. Please try again." };
+  }
+  if (availability.status === "empty") return unavailableFor(availability.reason);
+  if (!availability.slots.includes(time)) return slotUnavailable();
+
+  return null;
+}
+
 const REVALIDATE_PATHS = [
   "/client/appointments",
   "/doctor/appointments",
@@ -51,12 +105,17 @@ function revalidateAll() {
   for (const path of REVALIDATE_PATHS) revalidatePath(path);
 }
 
-/** Called directly from the booking form as the doctor/service/date change. */
+/**
+ * Called directly from the booking form as the doctor/service/date change,
+ * and from the reschedule form, which passes the appointment being moved so
+ * it does not count as occupying the time it is about to leave.
+ */
 export async function getAvailableSlotsAction(input: {
   doctorId: string;
   serviceId: string;
   visitType: string;
   date: string;
+  excludeAppointmentId?: string;
 }): Promise<AvailabilityResult> {
   if (!input.doctorId || !input.serviceId || !input.visitType || !input.date) {
     return { status: "empty", reason: "no_availability" };
@@ -100,9 +159,8 @@ export async function createAppointmentAction(
     date: parsed.data.date,
   });
 
-  if (availability.status !== "ok" || !availability.slots.includes(parsed.data.time)) {
-    return slotUnavailable();
-  }
+  const problem = slotProblem(availability, parsed.data.time);
+  if (problem) return problem;
 
   const { data, error } = await supabase
     .from("appointments")
@@ -173,11 +231,11 @@ export async function rescheduleAppointmentAction(
     serviceId: existing.service_id,
     visitType: existing.visit_type,
     date: parsed.data.date,
+    excludeAppointmentId: appointmentId,
   });
 
-  if (availability.status !== "ok" || !availability.slots.includes(parsed.data.time)) {
-    return slotUnavailable();
-  }
+  const problem = slotProblem(availability, parsed.data.time);
+  if (problem) return problem;
 
   const interval = appointmentInterval(parsed.data.date, parsed.data.time, service.data.durationMinutes);
 
@@ -238,6 +296,9 @@ export async function cancelAppointmentAction(
 const STATUS_ORDER = ["requested", "confirmed", "checked_in", "in_consultation", "completed"] as const;
 const VALID_STATUSES = [...STATUS_ORDER, "cancelled", "no_show"];
 
+/** Statuses that hand the doctor's time back — mirrors `appointments_no_double_booking`. */
+const RELEASING_STATUSES = ["cancelled", "no_show"];
+
 export async function updateAppointmentStatusAction(
   _previous: FormState,
   formData: FormData,
@@ -252,12 +313,17 @@ export async function updateAppointmentStatusAction(
   const supabase = await createClient();
   const update: Record<string, unknown> = { status };
 
-  if (status === "cancelled" || status === "no_show") {
+  if (status === "cancelled") {
     const user = await getSessionUser();
-    if (status === "cancelled") {
-      update.cancelled_at = new Date().toISOString();
-      update.cancelled_by = user?.id ?? null;
-    }
+    update.cancelled_at = new Date().toISOString();
+    update.cancelled_by = user?.id ?? null;
+  } else if (!RELEASING_STATUSES.includes(status)) {
+    // Reinstating a cancelled appointment: clear the cancellation with it, or
+    // the row claims to be both confirmed and cancelled at a stated time, and
+    // every screen that reads `cancelled_at` shows the older answer.
+    update.cancelled_at = null;
+    update.cancelled_by = null;
+    update.cancellation_reason = null;
   }
 
   const { data, error } = await supabase
@@ -268,6 +334,16 @@ export async function updateAppointmentStatusAction(
     .maybeSingle();
 
   if (error) {
+    // Cancelling frees the slot, so reinstating a cancelled appointment can
+    // find someone else already in it. The database refuses, correctly; the
+    // person at the front desk needs to be told which of the two it is.
+    if (error.code === "23P01") {
+      return {
+        status: "error",
+        message:
+          "That time has been booked by someone else since this appointment was cancelled. Reschedule it to a free time instead.",
+      };
+    }
     return failure("appointments", error, "We could not update this appointment just now. Please try again.");
   }
 

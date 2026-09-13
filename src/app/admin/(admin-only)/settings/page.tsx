@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BranchManager } from "@/components/branches/branch-manager";
 import { HeroImageForm } from "@/components/organizations/hero-image-form";
 import { LogoImageForm } from "@/components/organizations/logo-image-form";
+import { SchedulingRulesForm } from "@/components/organizations/scheduling-rules-form";
 import { SettingsForm } from "@/components/organizations/settings-form";
 import { SpeciesManager } from "@/components/species/species-manager";
 import { ErrorState } from "@/components/states/error-state";
@@ -52,6 +53,7 @@ export default async function AdminSettingsPage() {
       ) : (
         <>
           <SettingsForm organization={organization.data} />
+          <SchedulingRulesForm organization={organization.data} />
           <BranchManager branches={branches.status === "ok" ? branches.data : []} />
           <SpeciesManager species={species.status === "ok" ? species.data : []} />
           <LogoImageForm logoUrl={organization.data.logoUrl} footerShowLogo={organization.data.footerShowLogo} />

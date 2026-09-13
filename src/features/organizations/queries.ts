@@ -43,11 +43,16 @@ export type Organization = {
   logoPath: string | null;
   logoUrl: string | null;
   footerShowLogo: boolean;
+  /** The booking policy — see schedulingRulesSchema and 20261012000100_scheduling_rules.sql. */
+  bookingLeadMinutes: number;
+  bookingHorizonDays: number;
+  cancellationNoticeHours: number;
 };
 
 const ORGANIZATION_COLUMNS = `
   id, name, legal_name, timezone, email, phone, whatsapp_number, address, city, country, is_active,
-  payment_instructions, quiet_hours_start, quiet_hours_end, logo_path, footer_show_logo, updated_at
+  payment_instructions, quiet_hours_start, quiet_hours_end, logo_path, footer_show_logo, updated_at,
+  booking_lead_minutes, booking_horizon_days, cancellation_notice_hours
 `;
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- shaped by the select above */
@@ -70,6 +75,9 @@ function toOrganization(row: any): Organization {
     logoPath: row.logo_path,
     logoUrl: row.logo_path ? siteImagePublicUrl(row.logo_path, row.updated_at) : null,
     footerShowLogo: row.footer_show_logo,
+    bookingLeadMinutes: row.booking_lead_minutes,
+    bookingHorizonDays: row.booking_horizon_days,
+    cancellationNoticeHours: row.cancellation_notice_hours,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
