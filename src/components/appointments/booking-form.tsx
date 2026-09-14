@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
 
@@ -11,11 +11,11 @@ import { SelectField } from "@/components/form/select-field";
 import { TextAreaField } from "@/components/form/textarea-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SlotPicker, type SlotsState } from "@/components/appointments/slot-picker";
 import {
   createAppointmentAction,
-  getAvailableSlotsAction,
+  getDaySlotsAction,
 } from "@/features/appointments/actions";
-import { noSlotsMessage } from "@/features/appointments/messages";
 import { VISIT_TYPE_LABELS, VISIT_TYPES } from "@/lib/validation/appointment";
 import { idleState } from "@/lib/forms";
 import { cn } from "@/lib/utils";
@@ -51,14 +51,6 @@ const STEP_LABELS: Record<Step, string> = {
   reason: "Reason for visit",
   location: "Location",
 };
-
-const TIME_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
-
-function timeLabel(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  const reference = new Date(2000, 0, 1, hours, minutes);
-  return TIME_LABEL_FORMATTER.format(reference);
-}
 
 /**
  * Books a visit in the order the brief specifies: pet, service, doctor,
@@ -99,13 +91,6 @@ export function BookingForm({
 
   const dateValue = date ? format(date, "yyyy-MM-dd") : "";
 
-  type SlotsState =
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "loaded"; slots: string[] }
-    | { status: "empty"; reason: string }
-    | { status: "error" };
-
   const [slotsState, setSlotsState] = useState<SlotsState>({ status: "idle" });
 
   // A previously chosen time silently stops being valid once any of its
@@ -127,7 +112,7 @@ export function BookingForm({
 
     let cancelled = false;
 
-    getAvailableSlotsAction({ doctorId, serviceId, visitType, date: dateValue }).then((result) => {
+    getDaySlotsAction({ doctorId, serviceId, visitType, date: dateValue }).then((result) => {
       if (cancelled) return;
       if (result.status === "error") setSlotsState({ status: "error" });
       else if (result.status === "empty") setSlotsState({ status: "empty", reason: result.reason });
@@ -279,48 +264,12 @@ export function BookingForm({
           ) : null}
 
           {step === "time" ? (
-            <div className="grid gap-3">
-              <p className="text-sm font-medium">Time</p>
-
-              {slotsState.status === "loading" ? (
-                <p className="text-muted-foreground flex items-center gap-2 text-sm">
-                  <Loader2 className="size-4 animate-spin" aria-hidden />
-                  Checking availability…
-                </p>
-              ) : null}
-
-              {slotsState.status === "error" ? (
-                <p className="text-destructive text-sm">
-                  We could not check availability just now. Please try again.
-                </p>
-              ) : null}
-
-              {slotsState.status === "empty" ? (
-                <p className="text-muted-foreground text-sm">{noSlotsMessage(slotsState.reason)}</p>
-              ) : null}
-
-              {slotsState.status === "loaded" ? (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {slotsState.slots.map((slot) => (
-                    <Button
-                      key={slot}
-                      type="button"
-                      variant={slot === time ? "default" : "outline"}
-                      size="touch"
-                      onClick={() => setTime(slot)}
-                    >
-                      {timeLabel(slot)}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-
-              {fieldErrors?.time ? (
-                <p className="text-destructive text-sm" role="alert">
-                  {fieldErrors.time.join(" ")}
-                </p>
-              ) : null}
-            </div>
+            <SlotPicker
+              state={slotsState}
+              selected={time}
+              onSelect={setTime}
+              errors={fieldErrors?.time}
+            />
           ) : null}
 
           {step === "reason" ? (

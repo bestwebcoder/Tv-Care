@@ -6,17 +6,9 @@ import { useActionState, useEffect, useState } from "react";
 import { DatePicker } from "@/components/form/date-picker";
 import { FormAlert } from "@/components/form/form-alert";
 import { SubmitButton } from "@/components/form/submit-button";
-import { Button } from "@/components/ui/button";
-import { getAvailableSlotsAction, rescheduleAppointmentAction } from "@/features/appointments/actions";
-import { noSlotsMessage } from "@/features/appointments/messages";
+import { SlotPicker, slotTimeLabel, type SlotsState } from "@/components/appointments/slot-picker";
+import { getDaySlotsAction, rescheduleAppointmentAction } from "@/features/appointments/actions";
 import { idleState } from "@/lib/forms";
-
-const TIME_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
-
-function timeLabel(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return TIME_LABEL_FORMATTER.format(new Date(2000, 0, 1, hours, minutes));
-}
 
 /** Picks a new date and time for an existing appointment, keeping doctor/service fixed. */
 export function RescheduleForm({
@@ -38,13 +30,6 @@ export function RescheduleForm({
   const [time, setTime] = useState("");
   const dateValue = date ? format(date, "yyyy-MM-dd") : "";
 
-  type SlotsState =
-    | { status: "idle" }
-    | { status: "loading" }
-    | { status: "loaded"; slots: string[] }
-    | { status: "empty"; reason: string }
-    | { status: "error" };
-
   const [slotsState, setSlotsState] = useState<SlotsState>({ status: "idle" });
 
   // See the equivalent block in BookingForm: resetting state synchronously
@@ -64,7 +49,7 @@ export function RescheduleForm({
 
     // Excluding this appointment: without it a 10:00–11:00 visit could not be
     // moved to 10:30, because the time it is about to vacate counted as taken.
-    getAvailableSlotsAction({
+    getDaySlotsAction({
       doctorId,
       serviceId,
       visitType,
@@ -101,33 +86,10 @@ export function RescheduleForm({
 
       <DatePicker label="New date" name="_date" defaultValue={date} onSelect={setDate} fromDate={new Date()} />
 
-      <div className="grid gap-2">
-        <p className="text-sm font-medium">New time</p>
-
-        {slotsState.status === "loading" ? <p className="text-muted-foreground text-sm">Checking availability…</p> : null}
-        {slotsState.status === "error" ? <p className="text-destructive text-sm">Could not check availability.</p> : null}
-        {slotsState.status === "empty" ? (
-          <p className="text-muted-foreground text-sm">{noSlotsMessage(slotsState.reason)}</p>
-        ) : null}
-        {slotsState.status === "loaded" ? (
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-            {slotsState.slots.map((slot) => (
-              <Button
-                key={slot}
-                type="button"
-                variant={slot === time ? "default" : "outline"}
-                size="touch"
-                onClick={() => setTime(slot)}
-              >
-                {timeLabel(slot)}
-              </Button>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <SlotPicker state={slotsState} selected={time} onSelect={setTime} label="New time" />
 
       <SubmitButton pendingLabel="Rescheduling…">
-        {time ? `Confirm ${timeLabel(time)}` : "Confirm new time"}
+        {time ? `Confirm ${slotTimeLabel(time)}` : "Confirm new time"}
       </SubmitButton>
     </form>
   );

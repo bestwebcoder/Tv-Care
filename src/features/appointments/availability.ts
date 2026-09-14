@@ -2,7 +2,7 @@ import { dhakaInstant, nowInDhaka } from "@/lib/age";
 import { createClient } from "@/lib/supabase/server";
 import { getService } from "@/features/services/queries";
 import {
-  bookableSlots,
+  daySlots,
   daysBetween,
   isCalendarDate,
   weekdayOf,
@@ -13,6 +13,8 @@ export type {
   AvailabilityEmptyReason,
   AvailabilityResult,
   OccupiedInterval,
+  Slot,
+  SlotStatus,
   SlotWindow,
 } from "@/features/appointments/slots";
 
@@ -28,8 +30,8 @@ export const OCCUPYING_STATUSES = [
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Turns a doctor's configured availability into the actual times a client can
- * book, for one day.
+ * Turns a doctor's configured availability into the day a client is shown:
+ * every start time their windows define, each labelled bookable or not.
  *
  * The arithmetic is in `./slots`; what this adds is everything that has to be
  * asked of the database. It mirrors, in the browser's favour, what the
@@ -46,7 +48,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * changes its mind is a stale one. Every rule the form applies is re-applied
  * here, because this runs on the server and the form does not.
  */
-export async function computeAvailableSlots(params: {
+export async function computeDaySlots(params: {
   doctorId: string;
   serviceId: string;
   visitType: string;
@@ -146,7 +148,9 @@ export async function computeAvailableSlots(params: {
     return { status: "empty", reason: "no_availability" };
   }
 
-  const slots = bookableSlots({
+  const now = Date.now();
+
+  const slots = daySlots({
     date,
     windows: windows.map((window) => ({
       startsAt: window.starts_at.slice(0, 5),
@@ -158,10 +162,14 @@ export async function computeAvailableSlots(params: {
       starts: new Date(row.starts_at).getTime(),
       ends: new Date(row.ends_at).getTime(),
     })),
-    earliestStart: Date.now() + leadMinutes * 60_000,
+    now,
+    earliestStart: now + leadMinutes * 60_000,
   });
 
-  if (slots.length === 0) return { status: "empty", reason: "fully_booked" };
+  // A window that produced no boundary at all is a window shorter than its own
+  // slot length, which the schema refuses — but a day with nothing in it is
+  // "not working" rather than an empty grid.
+  if (slots.length === 0) return { status: "empty", reason: "no_availability" };
 
   return { status: "ok", slots };
 }

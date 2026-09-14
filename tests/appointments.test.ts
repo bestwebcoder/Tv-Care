@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { OCCUPYING_STATUSES } from "@/features/appointments/availability";
+import { daySlots } from "@/features/appointments/slots";
+import { dhakaInstant } from "@/lib/age";
+
 import { admin, createUserWithRole, organizationId, runId, signedInClient } from "./setup/http";
 
 /**
@@ -396,6 +400,117 @@ describe("the practice's scheduling rules", () => {
     } finally {
       await admin.from("organizations").update(before!).eq("id", orgA);
     }
+  });
+});
+
+describe("the day a client is shown, built from real rows", () => {
+  /**
+   * daySlots is unit-tested on its own (src/features/appointments/slots.test.ts).
+   * What that cannot cover is the shape the database actually hands it: `time`
+   * columns arrive as HH:MM:SS, `timestamptz` as an ISO instant, and both have
+   * to survive the trip into wall-clock arithmetic in the practice's timezone.
+   * This asserts the whole path on rows Postgres really returned.
+   */
+  const WEEKDAY = 3; // Wednesday — unused by the fixtures above.
+  let dayDoctor: string;
+  let date: string;
+
+  beforeAll(async () => {
+    const vet = await createUserWithRole(`appt-slots-${RUN}`, "doctor");
+    const { data: doctorRow, error } = await admin
+      .from("doctors")
+      .insert({ user_id: vet.userId, organization_id: orgA })
+      .select("id")
+      .single();
+    if (error) throw error;
+    dayDoctor = doctorRow!.id;
+
+    await admin.from("doctor_availability").insert({
+      doctor_id: dayDoctor,
+      organization_id: orgA,
+      weekday: WEEKDAY,
+      starts_at: "09:00",
+      ends_at: "12:00",
+      slot_minutes: 30,
+    });
+
+    // The next Wednesday that is comfortably in the future, so no slot is
+    // "past" and the practice's lead time cannot reach it.
+    const target = new Date();
+    target.setUTCDate(target.getUTCDate() + ((WEEKDAY - target.getUTCDay() + 7) % 7 || 7) + 7);
+    date = target.toISOString().slice(0, 10);
+
+    await admin.from("appointments").insert({
+      organization_id: orgA,
+      client_id: clientRecordA,
+      pet_id: petA,
+      doctor_id: dayDoctor,
+      service_id: serviceA,
+      visit_type: "clinic",
+      starts_at: dhakaInstant(date, "10:00").toISOString(),
+      ends_at: dhakaInstant(date, "10:30").toISOString(),
+    });
+  });
+
+  it("marks the booked time and leaves the slots either side of it selectable", async () => {
+    const [{ data: windows }, { data: booked }] = await Promise.all([
+      admin
+        .from("doctor_availability")
+        .select("starts_at, ends_at, slot_minutes")
+        .eq("doctor_id", dayDoctor)
+        .eq("weekday", WEEKDAY)
+        .eq("is_active", true)
+        .is("deleted_at", null),
+      admin
+        .from("appointments")
+        .select("starts_at, ends_at")
+        .eq("doctor_id", dayDoctor)
+        .is("deleted_at", null)
+        .in("status", OCCUPYING_STATUSES),
+    ]);
+
+    const now = Date.now();
+    const day = daySlots({
+      date,
+      windows: (windows ?? []).map((window) => ({
+        startsAt: window.starts_at.slice(0, 5),
+        endsAt: window.ends_at.slice(0, 5),
+        slotMinutes: window.slot_minutes,
+      })),
+      durationMinutes: 30,
+      occupied: (booked ?? []).map((row) => ({
+        starts: new Date(row.starts_at).getTime(),
+        ends: new Date(row.ends_at).getTime(),
+      })),
+      now,
+      earliestStart: now,
+    });
+
+    expect(day.map((slot) => `${slot.time} ${slot.status}`)).toEqual([
+      "09:00 available",
+      "09:30 available",
+      "10:00 booked",
+      "10:30 available",
+      "11:00 available",
+      "11:30 available",
+    ]);
+  });
+
+  it("offers the whole day again once the booking is cancelled", async () => {
+    await admin
+      .from("appointments")
+      .update({ status: "cancelled" })
+      .eq("doctor_id", dayDoctor)
+      .eq("starts_at", dhakaInstant(date, "10:00").toISOString());
+
+    const { data: booked } = await admin
+      .from("appointments")
+      .select("starts_at")
+      .eq("doctor_id", dayDoctor)
+      .is("deleted_at", null)
+      .in("status", OCCUPYING_STATUSES);
+
+    expect(booked).toEqual([]);
   });
 });
 

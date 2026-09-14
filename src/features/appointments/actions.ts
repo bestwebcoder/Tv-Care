@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 
 import {
-  computeAvailableSlots,
+  computeDaySlots,
   type AvailabilityEmptyReason,
   type AvailabilityResult,
+  type SlotStatus,
 } from "@/features/appointments/availability";
 import { getSessionUser } from "@/features/auth/session";
 import { getService } from "@/features/services/queries";
@@ -83,13 +84,37 @@ function unavailableFor(reason: AvailabilityEmptyReason): FormState {
   }
 }
 
+/**
+ * Why a slot the form offered cannot be booked after all.
+ *
+ * The form disables everything but `available`, so reaching these means the
+ * day changed under an open form — someone else booked the time, or the
+ * notice period caught up with it while the client was still typing.
+ */
+const BLOCKED_SLOT_MESSAGES: Record<Exclude<SlotStatus, "available">, string> = {
+  booked: "That time has just been taken. Please choose another slot.",
+  past: "That time has passed. Please choose another slot.",
+  too_soon: "That time is too close now for the practice to take a booking. Please choose a later slot.",
+  does_not_fit: "This visit needs longer than the doctor has left at that time. Please choose another slot.",
+};
+
 /** The slot check both booking and rescheduling run before writing. */
 function slotProblem(availability: AvailabilityResult, time: string): FormState | null {
   if (availability.status === "error") {
     return { status: "error", message: "We could not check availability just now. Please try again." };
   }
   if (availability.status === "empty") return unavailableFor(availability.reason);
-  if (!availability.slots.includes(time)) return slotUnavailable();
+
+  const slot = availability.slots.find((candidate) => candidate.time === time);
+  if (!slot) return slotUnavailable();
+
+  if (slot.status !== "available") {
+    return {
+      status: "error",
+      message: BLOCKED_SLOT_MESSAGES[slot.status],
+      fieldErrors: { time: ["Not available"] },
+    };
+  }
 
   return null;
 }
@@ -106,11 +131,16 @@ function revalidateAll() {
 }
 
 /**
- * Called directly from the booking form as the doctor/service/date change,
- * and from the reschedule form, which passes the appointment being moved so
- * it does not count as occupying the time it is about to leave.
+ * The day's slots, called directly from the booking form as the
+ * doctor/service/date change, and from the reschedule form — which passes the
+ * appointment being moved so it does not count as occupying the time it is
+ * about to leave.
+ *
+ * Returns the whole day, blocked times included, because the form shows them:
+ * "eleven is taken" and "we shut at half past ten" are different answers and a
+ * client can act on each.
  */
-export async function getAvailableSlotsAction(input: {
+export async function getDaySlotsAction(input: {
   doctorId: string;
   serviceId: string;
   visitType: string;
@@ -121,7 +151,7 @@ export async function getAvailableSlotsAction(input: {
     return { status: "empty", reason: "no_availability" };
   }
 
-  return computeAvailableSlots(input);
+  return computeDaySlots(input);
 }
 
 export async function createAppointmentAction(
@@ -152,7 +182,7 @@ export async function createAppointmentAction(
     return { status: "error", message: "That service could not be found." };
   }
 
-  const availability = await computeAvailableSlots({
+  const availability = await computeDaySlots({
     doctorId: parsed.data.doctorId,
     serviceId: parsed.data.serviceId,
     visitType: parsed.data.visitType,
@@ -226,7 +256,7 @@ export async function rescheduleAppointmentAction(
     return { status: "error", message: "That service could not be found." };
   }
 
-  const availability = await computeAvailableSlots({
+  const availability = await computeDaySlots({
     doctorId: existing.doctor_id,
     serviceId: existing.service_id,
     visitType: existing.visit_type,
