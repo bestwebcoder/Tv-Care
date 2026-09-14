@@ -1,5 +1,6 @@
 "use server";
 
+import { isAuthWeakPasswordError } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -103,11 +104,30 @@ export async function registerAction(
       };
     }
 
+    // The PIN already passed registerSchema, so this refusal means one of two
+    // things. "pwned" alone is a PIN on a breached-password list, which another
+    // PIN fixes. Anything else ("length", "characters") is the auth server's
+    // own policy being stricter than the client rule — the hosted project's
+    // settings have drifted from config.toml, and no PIN can pass until they
+    // are corrected, so asking for a different one would loop the visitor.
     if (error.code === "weak_password") {
+      const reasons = isAuthWeakPasswordError(error) ? error.reasons : [];
+
+      if (reasons.length > 0 && reasons.every((reason) => reason === "pwned")) {
+        return {
+          status: "error",
+          message: "That PIN is too easy to guess. Please choose a different one.",
+          fieldErrors: { password: ["Too easy to guess"] },
+        };
+      }
+
+      console.error(
+        "[auth] the auth server's password policy refuses a valid PIN; align its settings with config.toml",
+        reasons,
+      );
       return {
         status: "error",
-        message: "Please choose a different PIN.",
-        fieldErrors: { password: ["Enter a 6-digit PIN (numbers only)"] },
+        message: "We could not create your account just now. Please try again later, or contact The Traveling Vet.",
       };
     }
 
