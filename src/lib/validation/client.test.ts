@@ -65,9 +65,13 @@ describe("ownClientProfileSchema", () => {
     {} as Record<string, unknown>,
   );
 
-  it("validates a client's own edits the same way reception's are validated", () => {
+  it("validates a client's own phone the same way reception's is validated", () => {
     expect(ownClientProfileSchema.parse(ownValues).phone).toBe("+8801712345678");
-    expect(ownClientProfileSchema.safeParse({ ...ownValues, phone: "" }).success).toBe(false);
+    expect(ownClientProfileSchema.safeParse({ ...ownValues, phone: "0171234567" }).success).toBe(false);
+  });
+
+  it("lets a newly registered client save without a mobile number yet", () => {
+    expect(ownClientProfileSchema.parse({ ...ownValues, phone: null }).phone).toBeNull();
   });
 
   it("leaves notes out of the row, so a self-service save cannot blank them", () => {

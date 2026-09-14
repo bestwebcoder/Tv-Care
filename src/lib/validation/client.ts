@@ -48,7 +48,12 @@ export function clientToRow(values: ClientValues) {
  * here is what stops a self-service save from blanking what reception wrote,
  * since the profile form has no notes field to post back.
  */
-export const ownClientProfileSchema = clientSchema.omit({ notes: true });
+export const ownClientProfileSchema = clientSchema.omit({ notes: true }).extend({
+  // Optional only because a self-registered client may not have given a number
+  // yet. Once one is on file the database refuses to clear it
+  // (clients_phone_required_once_complete).
+  phone: phoneSchema.nullish().transform((value) => value ?? null),
+});
 
 export type OwnClientProfileValues = z.output<typeof ownClientProfileSchema>;
 

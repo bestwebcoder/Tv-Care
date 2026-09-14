@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { requireRole, requireUser } from "@/features/auth/session";
 import { describeAvatarProblem, readAvatar, uploadAvatar } from "@/features/profile/photo";
@@ -10,7 +9,7 @@ import { publicEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { ownClientProfileSchema, ownClientProfileToRow } from "@/lib/validation/client";
-import { completeProfileSchema, passwordSchemaFor, phoneLoginEmail } from "@/lib/validation/auth";
+import { passwordSchemaFor, phoneLoginEmail } from "@/lib/validation/auth";
 import {
   adminChangeEmailSchema,
   adminSetPasswordSchema,
@@ -284,7 +283,7 @@ export async function updateOwnClientProfileAction(
 
   const parsed = ownClientProfileSchema.safeParse({
     fullName: text(formData, "fullName") ?? "",
-    phone: text(formData, "phone") ?? "",
+    phone: text(formData, "phone") ?? null,
     alternatePhone: text(formData, "alternatePhone") ?? null,
     email: text(formData, "email") ?? null,
     preferredBranchId: text(formData, "preferredBranchId") ?? null,
@@ -335,7 +334,7 @@ export async function updateOwnClientProfileAction(
     if (verifyError) {
       return {
         status: "error",
-        message: "Your current password is incorrect.",
+        message: "Your current PIN is incorrect.",
         fieldErrors: { currentPassword: ["Incorrect"] },
       };
     }
@@ -357,6 +356,14 @@ export async function updateOwnClientProfileAction(
         fieldErrors: { phone: ["Already in use"] },
       };
     }
+    // clients_phone_required_once_complete: a number, once on file, stays.
+    if (error.code === "23514") {
+      return {
+        status: "error",
+        message: "Your clinic needs a mobile number on file. Enter one to save.",
+        fieldErrors: { phone: ["Required"] },
+      };
+    }
     return failure("profile", error, "We could not save these changes just now. Please try again.");
   }
 
@@ -366,7 +373,28 @@ export async function updateOwnClientProfileAction(
 
   const warnings: string[] = [];
 
-  if (!(await syncPhoneSignIn(user, parsed.data.phone))) {
+  // Registration asks for no name or number. The first mobile number a
+  // self-registered client saves is what completes their profile, and from
+  // then on the database keeps a number on file.
+  if (parsed.data.phone) {
+    const { error: completedError } = await supabase
+      .from("clients")
+      .update({ profile_completed_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .is("profile_completed_at", null);
+    if (completedError) console.error("[profile] profile completion stamp failed", completedError);
+  }
+
+  // The sidebar and greeting read the account's own profile, not the client
+  // record; the record above is what the practice relies on, so a failure here
+  // is logged rather than reported.
+  const { error: userError } = await supabase
+    .from("users")
+    .update({ full_name: parsed.data.fullName, ...(parsed.data.phone ? { phone: parsed.data.phone } : {}) })
+    .eq("id", user.id);
+  if (userError) console.error("[profile] account name sync failed", userError);
+
+  if (parsed.data.phone && !(await syncPhoneSignIn(user, parsed.data.phone))) {
     warnings.push("You still sign in with your previous mobile number, because another account uses the new one.");
   }
 
@@ -397,7 +425,7 @@ export async function updateOwnClientProfileAction(
 
     if (passwordError) {
       console.error("[profile]", passwordError);
-      warnings.push("Your password could not be changed.");
+      warnings.push("Your PIN could not be changed.");
     }
   }
 
@@ -409,7 +437,7 @@ export async function updateOwnClientProfileAction(
 
   return {
     status: "success",
-    message: changedPassword ? "Changes saved. Your password has been changed." : "Changes saved.",
+    message: changedPassword ? "Changes saved. Your PIN has been changed." : "Changes saved.",
     warning: warnings.length > 0 ? `${warnings.join(" ")} Everything else was saved.` : undefined,
   };
 }
@@ -446,69 +474,3 @@ async function syncPhoneSignIn(user: { id: string; email: string }, phone: strin
   return true;
 }
 
-/**
- * The first screen a self-registered client sees: the name and numbers
- * registration no longer asks for. Stamps profile_completed_at, which is what
- * lets them past the /client gate.
- *
- * Located by user_id = auth.uid(), never by an id from the browser.
- */
-export async function completeOwnProfileAction(_previous: FormState, formData: FormData): Promise<FormState> {
-  const user = await requireRole("client");
-
-  const parsed = completeProfileSchema.safeParse({
-    fullName: text(formData, "fullName") ?? "",
-    phone: text(formData, "phone") ?? "",
-    alternatePhone: text(formData, "alternatePhone") ?? "",
-  });
-  if (!parsed.success) return invalid(parsed.error);
-
-  if (!(await syncPhoneSignIn(user, parsed.data.phone))) {
-    return {
-      status: "error",
-      message: "Another account already signs in with this mobile number.",
-      fieldErrors: { phone: ["Already in use"] },
-    };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("clients")
-    .update({
-      full_name: parsed.data.fullName,
-      phone: parsed.data.phone,
-      alternate_phone: parsed.data.alternatePhone,
-      profile_completed_at: new Date().toISOString(),
-    })
-    .eq("user_id", user.id)
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
-    if (error.code === "23505") {
-      return {
-        status: "error",
-        message: "This mobile number is already on file with the clinic. Use another, or contact The Traveling Vet.",
-        fieldErrors: { phone: ["Already in use"] },
-      };
-    }
-    return failure("profile", error, "We could not save your details just now. Please try again.");
-  }
-
-  if (!data) {
-    return { status: "error", message: "We could not find your client record. Please contact the clinic." };
-  }
-
-  // The account's own profile carries the name shown in the sidebar. The
-  // client record above is what the practice relies on, so a failure here is
-  // logged rather than undoing a completed profile.
-  const { error: userError } = await supabase
-    .from("users")
-    .update({ full_name: parsed.data.fullName, phone: parsed.data.phone })
-    .eq("id", user.id);
-  if (userError) console.error("[profile] account name sync failed", userError);
-
-  revalidatePath("/", "layout");
-  redirect("/client");
-}

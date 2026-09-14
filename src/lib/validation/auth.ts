@@ -31,20 +31,15 @@ export const passwordSchema = z
   .regex(/\d/, "Password must contain a number");
 
 /**
- * The client rule: a 6-digit PIN, or a password of at least 8 characters.
+ * The client rule: exactly six digits, nothing else.
  *
- * The practice decided registration must be frictionless for pet owners, and
- * reversed d42eede to get there. What still holds: a PIN is exactly six digits
- * (not "123" or "abcdef"), anything that is not a PIN is at least eight
- * characters, and repeated guessing is bounded by the auth server's sign-in
- * rate limit (config.toml, auth.rate_limit.sign_in_sign_ups).
+ * The practice decided pet owners sign in with a PIN only — at registration,
+ * reset and change-password alike. Repeated guessing is bounded by the auth
+ * server's sign-in rate limit (config.toml, auth.rate_limit.sign_in_sign_ups).
+ * A client who set a longer password before this rule can still sign in with it
+ * (loginSchema imposes no policy); the next one they choose is a PIN.
  */
-export const clientPasswordSchema = z
-  .string()
-  .max(72, "Password must be 72 characters or fewer")
-  .refine((value) => /^\d{6}$/.test(value) || (value.length >= 8 && !/^\d+$/.test(value)), {
-    message: "Use a 6-digit PIN, or a password of at least 8 characters",
-  });
+export const clientPasswordSchema = z.string().regex(/^\d{6}$/, "Enter a 6-digit PIN (numbers only)");
 
 /** Whether this person is only a pet owner — the one case the client rule applies to. */
 export function isClientOnly(roles: readonly RoleSlug[]): boolean {
@@ -119,7 +114,7 @@ export const registerSchema = z
     confirmPassword: z.string(),
   })
   .refine((values) => values.password === values.confirmPassword, {
-    message: "PINs or passwords do not match",
+    message: "PINs do not match",
     path: ["confirmPassword"],
   });
 
@@ -134,42 +129,20 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.input<typeof loginSchema>;
 
-/**
- * The first screen after a new client signs in. Name and mobile number are what
- * reception needs to reach them; the alternate number is optional.
- */
-export const completeProfileSchema = z
-  .object({
-    fullName: fullNameSchema,
-    phone: phoneSchema,
-    alternatePhone: z
-      .string()
-      .trim()
-      .transform((value) => (value === "" ? null : value))
-      .nullish()
-      .transform((value) => value ?? null)
-      .pipe(phoneSchema.nullable()),
-  })
-  .refine((values) => values.alternatePhone === null || values.alternatePhone !== values.phone, {
-    message: "Enter a different number, or leave this blank",
-    path: ["alternatePhone"],
-  });
-
-export type CompleteProfileValues = z.output<typeof completeProfileSchema>;
-
 export const forgotPasswordSchema = z.object({ email: emailSchema });
 
 export type ForgotPasswordInput = z.input<typeof forgotPasswordSchema>;
 
 /**
  * Reset-password is reached by clients and staff alike, and the form cannot
- * know which before the server looks at the session. So the shape check here
- * uses the looser client rule, and resetPasswordAction re-checks the password
- * against passwordSchemaFor(the signed-in person's roles).
+ * know which before the server looks at the session. The client rule (a PIN)
+ * and the staff rule (10+ characters) share no credential, so the shape check
+ * here only requires something typed, and resetPasswordAction holds it to
+ * passwordSchemaFor(the signed-in person's roles).
  */
 export const resetPasswordSchema = z
   .object({
-    password: clientPasswordSchema,
+    password: z.string().min(1, "Enter a new PIN or password").max(72, "Password must be 72 characters or fewer"),
     confirmPassword: z.string(),
   })
   .refine((values) => values.password === values.confirmPassword, {

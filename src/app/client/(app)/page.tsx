@@ -11,7 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireRole } from "@/features/auth/session";
 import { getNextAppointmentForClient } from "@/features/appointments/queries";
-import { getOwnClientRecord } from "@/features/clients/queries";
+import { getOwnClientRecord, getOwnProfileCompletion } from "@/features/clients/queries";
 import { listPets, signedPhotoUrl } from "@/features/pets/queries";
 import { dewormingStatusesByPet, listPetDewormingStatuses } from "@/features/deworming/queries";
 import { listInvoicesForClient } from "@/features/invoices/queries";
@@ -22,7 +22,11 @@ import type { Metric } from "@/features/dashboard/queries";
 
 export default async function ClientDashboardPage() {
   const user = await requireRole("client");
-  const [pets, client] = await Promise.all([listPets(), getOwnClientRecord()]);
+  const [pets, client, profileCompletion] = await Promise.all([
+    listPets(),
+    getOwnClientRecord(),
+    getOwnProfileCompletion(),
+  ]);
 
   const nextAppointment =
     client.status === "ok" && client.data ? await getNextAppointmentForClient(client.data.id) : null;
@@ -75,6 +79,21 @@ export default async function ClientDashboardPage() {
         title={`Welcome, ${firstName(user.fullName)}`}
         subtitle="Your pets, appointments and records in one place."
       />
+
+      {/* Registration asks for no name or number; this is an invitation, never a gate. */}
+      {profileCompletion.status === "ok" && profileCompletion.data === "incomplete" ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <div className="grid gap-0.5">
+              <p className="font-medium">Add your name and mobile number</p>
+              <p className="text-muted-foreground text-sm">So your vet and the clinic can reach you about your pets.</p>
+            </div>
+            <Link href="/client/profile" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              Go to profile
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="grid gap-4">
         <h2 className="sr-only">Needs attention</h2>

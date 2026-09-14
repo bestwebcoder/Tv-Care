@@ -39,9 +39,10 @@ async function siteOrigin(): Promise<string> {
 }
 
 /**
- * Client self-registration: one identifier (email or mobile) and a PIN or
- * password, signed in on the spot. Name and phone numbers are collected on
- * /client/complete-profile, which the /client area sends a new client to first.
+ * Client self-registration: one identifier (email or mobile) and a 6-digit
+ * PIN, signed in on the spot and taken straight to their dashboard. Name and
+ * phone numbers are optional afterwards, added on /client/profile whenever the
+ * client chooses.
  *
  * Email and phone confirmation are off (config.toml) by the practice's
  * decision, so signUp returns a session. That also means an address or number
@@ -105,8 +106,8 @@ export async function registerAction(
     if (error.code === "weak_password") {
       return {
         status: "error",
-        message: "Please choose a different PIN or password.",
-        fieldErrors: { password: ["Use a 6-digit PIN, or a password of at least 8 characters"] },
+        message: "Please choose a different PIN.",
+        fieldErrors: { password: ["Enter a 6-digit PIN (numbers only)"] },
       };
     }
 
@@ -126,8 +127,7 @@ export async function registerAction(
     };
   }
 
-  // The /client area sends a new client to complete their profile first.
-  redirect("/client/complete-profile");
+  redirect("/client");
 }
 
 export async function loginAction(_previous: FormState, formData: FormData): Promise<FormState> {
@@ -224,8 +224,9 @@ export async function resetPasswordAction(
     };
   }
 
-  // The form only checked the looser client rule; anyone holding a staff role
-  // is held to the staff one here, because the auth server no longer will.
+  // The form only checked that something was typed. A client is held to the
+  // PIN rule and anyone holding a staff role to the staff one, here, because
+  // the auth server cannot tell them apart.
   const policy = passwordSchemaFor(user.roles).safeParse(parsed.data.password);
   if (!policy.success) {
     return {

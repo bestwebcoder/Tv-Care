@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   clientPasswordSchema,
-  completeProfileSchema,
   credentialsFor,
   identifierSchema,
   isClientOnly,
@@ -63,10 +62,20 @@ describe("registerSchema", () => {
     expect(result.identifier).toEqual({ kind: "email", email: "a@b.com" });
   });
 
-  it("accepts a mobile number and a password", () => {
+  it("accepts a mobile number and a 6-digit PIN", () => {
     expect(
-      registerSchema.safeParse({ identifier: "01712345678", password: "sunflower", confirmPassword: "sunflower" }).success,
+      registerSchema.safeParse({ identifier: "01712345678", password: "000000", confirmPassword: "000000" }).success,
     ).toBe(true);
+  });
+
+  it.each([
+    ["sunflower", "a password"],
+    ["Test-Password-123", "a strong password"],
+    ["12345", "5 digits"],
+    ["1234567", "7 digits"],
+    ["12345a", "a letter"],
+  ])("rejects %s (%s) — registration takes a PIN only", (password) => {
+    expect(registerSchema.safeParse({ identifier: "a@b.com", password, confirmPassword: password }).success).toBe(false);
   });
 
   it("rejects a mismatch against the confirm field", () => {
@@ -79,18 +88,19 @@ describe("registerSchema", () => {
 describe("clientPasswordSchema", () => {
   it.each([
     ["482913", "a 6-digit PIN"],
-    ["sunflower", "8+ characters"],
-    ["Test-Password-123", "a strong password"],
+    ["000000", "any six digits"],
   ])("accepts %s (%s)", (password) => {
     expect(clientPasswordSchema.safeParse(password).success).toBe(true);
   });
 
   it.each([
     ["12345", "a 5-digit PIN"],
-    ["1234567", "7 digits — neither a PIN nor a password"],
-    ["12345678", "8 digits — a longer PIN is not a password"],
+    ["1234567", "7 digits"],
+    ["12345678", "8 digits"],
     ["abcdef", "6 letters"],
-    ["short1", "under 8 characters"],
+    ["sunflower", "a password"],
+    ["Test-Password-123", "a strong password"],
+    [" 482913", "a PIN with a space"],
   ])("rejects %s (%s)", (password) => {
     expect(clientPasswordSchema.safeParse(password).success).toBe(false);
   });
@@ -116,6 +126,8 @@ describe("staff keep the strong password rule", () => {
     expect(isClientOnly(["client", "doctor"])).toBe(false);
     expect(isClientOnly([])).toBe(false);
     expect(passwordSchemaFor(["client"]).safeParse("482913").success).toBe(true);
+    expect(passwordSchemaFor(["client"]).safeParse("Test-Password-123").success).toBe(false);
+    expect(passwordSchemaFor(["doctor"]).safeParse("Test-Password-123").success).toBe(true);
     expect(passwordSchemaFor(["client", "doctor"]).safeParse("482913").success).toBe(false);
     expect(passwordSchemaFor(["admin"]).safeParse("482913").success).toBe(false);
   });
@@ -131,32 +143,6 @@ describe("loginSchema", () => {
   });
 });
 
-describe("completeProfileSchema", () => {
-  it("accepts a name and phone, with no alternate", () => {
-    expect(completeProfileSchema.parse({ fullName: "Rehana Khatun", phone: "01712345678", alternatePhone: "" })).toEqual({
-      fullName: "Rehana Khatun",
-      phone: "+8801712345678",
-      alternatePhone: null,
-    });
-  });
-
-  it("refuses the same number twice", () => {
-    const result = completeProfileSchema.safeParse({
-      fullName: "Rehana Khatun",
-      phone: "01712345678",
-      alternatePhone: "+8801712345678",
-    });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0].path).toEqual(["alternatePhone"]);
-  });
-
-  it("validates the alternate number when one is given", () => {
-    expect(
-      completeProfileSchema.safeParse({ fullName: "Rehana Khatun", phone: "01712345678", alternatePhone: "123" }).success,
-    ).toBe(false);
-  });
-});
-
 describe("resetPasswordSchema", () => {
   it("requires both fields to match", () => {
     const result = resetPasswordSchema.safeParse({
@@ -165,5 +151,12 @@ describe("resetPasswordSchema", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it.each([
+    ["482913", "a client's PIN"],
+    ["Test-Password-123", "a staff password"],
+  ])("lets %s (%s) through to the per-role check on the server", (password) => {
+    expect(resetPasswordSchema.safeParse({ password, confirmPassword: password }).success).toBe(true);
   });
 });

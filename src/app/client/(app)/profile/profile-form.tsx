@@ -78,8 +78,7 @@ export function ProfileForm({
             type="tel"
             inputMode="tel"
             defaultValue={client.phone}
-            required
-            hint="For example 01712345678"
+            hint="For example 01712345678. Your vet and the clinic use this to reach you."
             errors={fieldErrors?.phone}
           />
 
@@ -129,31 +128,39 @@ export function ProfileForm({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Password</CardTitle>
+          <CardTitle className="text-base">PIN</CardTitle>
           <CardDescription>
-            Leave these blank unless you want to change the password you sign in with.
+            Leave these blank unless you want to change the PIN you sign in with.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
+          {/* Not limited to digits: a client who set a longer password before
+              the PIN rule types that here once to move to a PIN. */}
           <PasswordField
-            label="Current password"
+            label="Current PIN"
             name="currentPassword"
             autoComplete="current-password"
             errors={fieldErrors?.currentPassword}
           />
 
           <PasswordField
-            label="New password"
+            label="New 6-digit PIN"
             name="newPassword"
             autoComplete="new-password"
-            hint="At least 10 characters, with an uppercase letter, a lowercase letter and a number."
+            inputMode="numeric"
+            pattern="\d{6}"
+            maxLength={6}
+            hint="Choose any 6 numbers."
             errors={fieldErrors?.newPassword}
           />
 
           <PasswordField
-            label="Confirm new password"
+            label="Confirm new PIN"
             name="confirmPassword"
             autoComplete="new-password"
+            inputMode="numeric"
+            pattern="\d{6}"
+            maxLength={6}
             errors={fieldErrors?.confirmPassword}
           />
         </CardContent>

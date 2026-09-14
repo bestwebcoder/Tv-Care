@@ -14,7 +14,7 @@ const initialState: FormState = { status: "idle" };
 
 /**
  * Two things to type and a PIN to repeat. A successful registration signs the
- * client in and redirects to /client/complete-profile, so the only success
+ * client in and redirects to their dashboard at /client, so the only success
  * state rendered here is the fallback for an auth server that still requires
  * confirmation (see registerAction).
  */
@@ -52,18 +52,24 @@ export function RegisterForm() {
             />
 
             <PasswordField
-              label="PIN or password"
+              label="6-digit PIN"
               name="password"
               autoComplete="new-password"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
               required
-              hint="A 6-digit PIN, or a password of at least 8 characters."
+              hint="Choose any 6 numbers. You will use this PIN to sign in."
               errors={fieldErrors?.password}
             />
 
             <PasswordField
-              label="Confirm PIN or password"
+              label="Confirm PIN"
               name="confirmPassword"
               autoComplete="new-password"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
               required
               errors={fieldErrors?.confirmPassword}
             />

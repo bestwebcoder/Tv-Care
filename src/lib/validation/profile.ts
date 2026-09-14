@@ -24,17 +24,18 @@ export const changePasswordSchema = z
 export type ChangePasswordInput = z.input<typeof changePasswordSchema>;
 
 /**
- * A client changing their own password or PIN from their profile — the same
- * shape, held to the client rule a pet owner registered under.
+ * A client changing their PIN from their profile — the same shape, held to the
+ * 6-digit PIN rule. The current credential is anything: a client who set a
+ * longer password before the PIN rule must still be able to prove it.
  */
 export const clientChangePasswordSchema = z
   .object({
-    currentPassword: z.string().min(1, "Enter your current password or PIN"),
+    currentPassword: z.string().min(1, "Enter your current PIN"),
     newPassword: clientPasswordSchema,
     confirmPassword: z.string(),
   })
   .refine((values) => values.newPassword === values.confirmPassword, {
-    message: "Passwords do not match",
+    message: "PINs do not match",
     path: ["confirmPassword"],
   });
 
